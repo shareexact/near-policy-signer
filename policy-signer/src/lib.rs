@@ -192,7 +192,13 @@ impl PolicySigner {
             Err(reason) => {
                 emit(
                     "refused",
-                    json!({ "chain_id": request.chain_id, "token": request.token, "reason": reason }),
+                    json!({
+                        "chain_id": request.chain_id,
+                        "token": request.token,
+                        "recipient": request.recipient,
+                        "reason": reason,
+                        "ui_shares": request.ui_shares,
+                    }),
                 );
                 PromiseOrValue::Value(Outcome::Refused { reason })
             }
@@ -422,6 +428,10 @@ impl PolicySigner {
         self.params = params;
     }
 
+    /// Set the gas attached to the MPC `sign` call. Default 50 Tgas; the
+    /// accepted range is 15 to 250 Tgas. Before deploying, read the live
+    /// `sign_call_gas_attachment_requirement` from the signer contract and
+    /// keep this value at or above it.
     pub fn set_sign_gas(&mut self, tgas: u64) {
         self.assert_owner();
         require!(
@@ -484,8 +494,12 @@ impl PolicySigner {
         self.nonces.insert(chain_id, state);
     }
 
-    /// Unstick a chain whose callback never ran. Releases nothing: the owner
-    /// is asserting the request is dead.
+    /// Unstick a chain whose callback itself failed (for example, it ran out
+    /// of gas). An MPC error or timeout does not need this: the callback
+    /// still runs, receives the error and releases the reservation.
+    /// Does **not** release the reserved daily budget or advance the nonce:
+    /// the owner is asserting the request is dead, and any signature from it
+    /// must not be used.
     pub fn clear_in_flight(&mut self, chain_id: u64) {
         self.assert_owner();
         let mut state = self.nonces.get(&chain_id).cloned().unwrap_or_default();

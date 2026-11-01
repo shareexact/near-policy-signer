@@ -2,9 +2,11 @@
 
 An AI agent that can move Stock Tokens should never hold a key.
 
-This directory is the NEAR HACKATHON entry for ShareExact. The agent holds only a NEAR function-call key. A NEAR contract builds the exact Robinhood Chain transaction itself, checks it against the owner's policy and the share unit, and only then asks the NEAR MPC network for a signature through Chain Signatures. **The signed payload is exactly the payload the policy checked.** When the agent gets the number wrong (shares instead of raw units, a stale multiplier, a pending split, an amount over the cap), the contract refuses with a named reason and nothing is signed.
+This is the NEAR control plane for ShareExact. The agent holds only a NEAR function-call key. The contract builds the exact Robinhood Chain transaction itself, checks it against the owner's policy and the share unit, and only then asks the NEAR MPC network for a signature through Chain Signatures. **The signed payload is exactly the payload the policy checked.** When the agent gets the number wrong (shares instead of raw units, a stale multiplier, a pending split, an amount over the cap), the contract refuses with a named reason and nothing is signed.
 
 **Why NEAR:** the agent holds no key; only the NEAR contract can obtain an MPC signature, and only for a transaction it built and checked itself.
+
+**How it extends ShareExact:** ShareExact already enforces exact share delivery on Robinhood Chain. This contract adds a policy layer for any agent allowed to move those tokens: a control that does not depend on the agent being correct, with daily caps, allowlists and an onchain refusal log.
 
 ## What is new in the hackathon window
 
@@ -29,7 +31,7 @@ C1 cannot read Robinhood Chain state; NEAR Chain Signatures is outbound only. It
 
 ## Refusals
 
-Where a refusal means the same condition as a ShareExact contract error, it uses the same name.
+Where a refusal means the same condition as a ShareExact contract error, it uses the same name. The predicates for a pending unit change match `unitChangeImminent` in `@shareexact/sdk` and `ShareExactGuard`.
 
 | Refusal | Same name as | Condition |
 |---|---|---|
@@ -41,7 +43,7 @@ Where a refusal means the same condition as a ShareExact contract error, it uses
 | `StaleObservation` | | Observation older than `max_observation_age_s` (default 120 s) or more than `max_clock_skew_s` (default 15 s) ahead of NEAR's clock |
 | `UnitUnavailable` | `ExactTransfer.UnitUnavailable` | Multiplier is zero |
 | `ObservationCrossedChange` | | A scheduled change took effect after the observation was taken |
-| `MultiplierChangePending` | `ExactTransfer.MultiplierChangePending` | A change is scheduled within `corp_action_window_s` (default 7200 s, floor 600 s). Same predicate as `unitChangeImminent` in `@shareexact/sdk` |
+| `MultiplierChangePending` | `ExactTransfer.MultiplierChangePending` | A change is scheduled within `corp_action_window_s` (default 7200 s, floor 600 s) |
 | `ZeroAmount` | `ExactTransfer.ZeroAmount` | Zero shares, or a request that floors to zero raw units |
 | `ShareShortfall` | `ExactTransfer.ShareShortfall` | Floor rounding loses more than `max_shortfall` |
 | `AmountCapExceeded` | | Over the per-request or per-day raw cap for the token |
@@ -61,15 +63,16 @@ Where a refusal means the same condition as a ShareExact contract error, it uses
 | MPC network | Sign for C1's derivation path | Sign for C1's path without a call from C1 |
 | Compromised agent | Lie about the multiplier; collect signatures within caps | In Exact mode, change the shares delivered or exceed the allowance. In both modes, exceed caps or use a token or recipient that is not allowlisted |
 
-Stated limits:
+Stated limits a user must know:
 - Signed EVM transactions do not expire, so daily caps limit signatures, not executions. In Exact mode the `approve` allowance is the hard spending bound.
 - The request counter is not released when signing fails; it bounds MPC calls, not transfers.
 - **Never delete the C1 account.** The derived EVM address depends only on the account id and the path, so whoever re-creates the name controls the address.
 - The owner, agent and contract must be three different accounts; `new` enforces this.
+- An in-flight request that never receives a callback can be cleared by the owner. Clearing does not release budget, because a signature may still be in flight.
 
 ## Run the tests
 
-No keys, funds or network needed.
+No keys, funds or network needed. These are unit tests; the near-workspaces sandbox tests with the mock signer are planned and not in this directory yet.
 
 ```sh
 cd near

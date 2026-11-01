@@ -213,13 +213,18 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Approved, Refusa
     }
     let change_scheduled = effective_at != 0 && new_multiplier != multiplier;
     if change_scheduled {
-        // A change that took effect after the reads were taken: the observed
-        // multiplier is already wrong, whatever the window says.
+        // Observation predates a change that has already taken effect.
+        // The reported multiplier is stale; fail closed. This rule is C1's
+        // own: the SDK reads live and has no observation age to compare.
         if obs.block_timestamp < effective_at && effective_at <= ctx.now_s {
             return Err(Refusal::ObservationCrossedChange);
         }
         // Same predicate as `unitChangeImminent` in @shareexact/sdk and
-        // `ShareExactGuard._corpActionImminent`.
+        // `ShareExactGuard._corpActionImminent` for a complete observation.
+        // Incomplete observations never reach here: they were refused above
+        // with `ObservationIncomplete`, where the SDK may answer differently.
+        // A change inside the window is refused so the agent cannot race a
+        // corporate action.
         if effective_at > ctx.now_s && effective_at - ctx.now_s <= ctx.params.corp_action_window_s {
             return Err(Refusal::MultiplierChangePending);
         }

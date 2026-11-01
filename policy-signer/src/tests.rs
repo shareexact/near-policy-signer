@@ -408,11 +408,16 @@ fn refusals_are_logged_as_events() {
     r.chain_id = 1;
     refusal(&mut c, r);
     let logs = get_logs();
+    let line = logs
+        .iter()
+        .find(|l| l.contains("\"event\":\"refused\""))
+        .expect("a refused event");
+    assert!(line.contains("ChainNotAllowed"), "{line}");
     assert!(
-        logs.iter()
-            .any(|l| l.contains("\"event\":\"refused\"") && l.contains("ChainNotAllowed")),
-        "{logs:?}"
+        line.contains(&format!("\"recipient\":\"{RECIPIENT}\"")),
+        "{line}"
     );
+    assert!(line.contains(&format!("\"ui_shares\":\"{WAD}\"")), "{line}");
 }
 
 /* --------------------------- signing lifecycle --------------------------- */
