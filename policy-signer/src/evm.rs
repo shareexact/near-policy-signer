@@ -23,7 +23,9 @@ const fn selector_transfer_shares() -> [u8; 4] {
 /// EIP-55 checksum is not enforced because C2 and the owner both pass
 /// lowercase, and a checksum mismatch is not a policy question.
 pub fn parse_address(s: &str) -> Result<Address, String> {
-    let hex = s.strip_prefix("0x").ok_or_else(|| format!("address {s} must start with 0x"))?;
+    let hex = s
+        .strip_prefix("0x")
+        .ok_or_else(|| format!("address {s} must start with 0x"))?;
     if hex.len() != 40 {
         return Err(format!("address {s} must have 40 hex digits"));
     }
@@ -89,7 +91,12 @@ pub fn calldata_transfer_shares(
 ) -> Vec<u8> {
     abi_call(
         SEL_TRANSFER_SHARES,
-        &[word_address(token), word_address(recipient), word_u128(ui_shares), word_u128(max_shortfall)],
+        &[
+            word_address(token),
+            word_address(recipient),
+            word_u128(ui_shares),
+            word_u128(max_shortfall),
+        ],
     )
 }
 
@@ -144,13 +151,19 @@ mod tests {
         };
         assert_eq!(sel("transfer(address,uint256)"), SEL_TRANSFER);
         assert_eq!(sel("approve(address,uint256)"), SEL_APPROVE);
-        assert_eq!(sel("transferShares(address,address,uint256,uint256)"), SEL_TRANSFER_SHARES);
+        assert_eq!(
+            sel("transferShares(address,address,uint256,uint256)"),
+            SEL_TRANSFER_SHARES
+        );
     }
 
     #[test]
     fn parses_addresses_strictly() {
         let a = parse_address("0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E").unwrap();
-        assert_eq!(address_hex(&a), "0xc9f9c86933092bbbfff3ccb4b105a4a94bf3bd4e");
+        assert_eq!(
+            address_hex(&a),
+            "0xc9f9c86933092bbbfff3ccb4b105a4a94bf3bd4e"
+        );
         assert!(parse_address("C9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E").is_err());
         assert!(parse_address("0x1234").is_err());
         assert!(parse_address("0xZZf9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E").is_err());

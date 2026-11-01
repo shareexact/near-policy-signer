@@ -21,12 +21,15 @@ pub mod policy;
 use near_sdk::json_types::U128;
 use near_sdk::serde_json::{self, json, Value};
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError, PromiseOrValue};
+use near_sdk::{
+    env, near, require, AccountId, Gas, NearToken, PanicOnDefault, Promise, PromiseError,
+    PromiseOrValue,
+};
 
 use evm::{Address, TxFields};
 use policy::{
-    evaluate, record_of, Approved, ChainPolicy, Context, Fees, Params, Refusal, SignedRecord, TokenPolicy,
-    TransferRequest, MIN_CORP_ACTION_WINDOW_S,
+    evaluate, record_of, Approved, ChainPolicy, Context, Fees, Params, Refusal, SignedRecord,
+    TokenPolicy, TransferRequest, MIN_CORP_ACTION_WINDOW_S,
 };
 
 /// Robinhood Chain mainnet. Never allowlisted on a contract deployed to a
@@ -172,7 +175,10 @@ impl PolicySigner {
     /// The agent's only state-changing method. Refusals are returned (and
     /// logged as events), not panicked, so the reason is on chain.
     pub fn request(&mut self, request: TransferRequest) -> PromiseOrValue<Outcome> {
-        require!(env::predecessor_account_id() == self.agent, "only the agent may request");
+        require!(
+            env::predecessor_account_id() == self.agent,
+            "only the agent may request"
+        );
         let now_s = now_s();
         self.roll_day(now_s);
 
@@ -184,7 +190,10 @@ impl PolicySigner {
         };
         match decision {
             Err(reason) => {
-                emit("refused", json!({ "chain_id": request.chain_id, "token": request.token, "reason": reason }));
+                emit(
+                    "refused",
+                    json!({ "chain_id": request.chain_id, "token": request.token, "reason": reason }),
+                );
                 PromiseOrValue::Value(Outcome::Refused { reason })
             }
             Ok(approved) => PromiseOrValue::Promise(self.reserve_and_sign(
@@ -246,7 +255,10 @@ impl PolicySigner {
             other => {
                 // Cleared by the owner while signing; nothing to settle.
                 state.in_flight = other;
-                return Outcome::SignFailed { request_id, error: "request no longer in flight".into() };
+                return Outcome::SignFailed {
+                    request_id,
+                    error: "request no longer in flight".into(),
+                };
             }
         };
 
@@ -290,8 +302,14 @@ impl PolicySigner {
                     }
                 }
                 self.nonces.insert(chain_id, state);
-                emit("sign_failed", json!({ "request_id": request_id, "chain_id": chain_id }));
-                Outcome::SignFailed { request_id, error: "MPC sign call failed or timed out".into() }
+                emit(
+                    "sign_failed",
+                    json!({ "request_id": request_id, "chain_id": chain_id }),
+                );
+                Outcome::SignFailed {
+                    request_id,
+                    error: "MPC sign call failed or timed out".into(),
+                }
             }
         }
     }
@@ -300,19 +318,36 @@ impl PolicySigner {
 
     /// Owner-only: the capped `approve` Mode X needs, to the configured
     /// `ExactTransfer`. Signed through the same path and nonce rules.
-    pub fn request_approve(&mut self, chain_id: u64, token: String, amount: U128, fees: Fees) -> PromiseOrValue<Outcome> {
+    pub fn request_approve(
+        &mut self,
+        chain_id: u64,
+        token: String,
+        amount: U128,
+        fees: Fees,
+    ) -> PromiseOrValue<Outcome> {
         self.assert_owner();
         let now_s = now_s();
         let refuse = |reason: Refusal| {
-            emit("refused", json!({ "chain_id": chain_id, "token": token, "reason": reason }));
+            emit(
+                "refused",
+                json!({ "chain_id": chain_id, "token": token, "reason": reason }),
+            );
             PromiseOrValue::Value(Outcome::Refused { reason })
         };
-        let Some(chain) = self.chains.get(&chain_id).cloned() else { return refuse(Refusal::ChainNotAllowed) };
-        let Ok(token_addr) = evm::parse_address(&token) else { return refuse(Refusal::TokenNotAllowed) };
+        let Some(chain) = self.chains.get(&chain_id).cloned() else {
+            return refuse(Refusal::ChainNotAllowed);
+        };
+        let Ok(token_addr) = evm::parse_address(&token) else {
+            return refuse(Refusal::TokenNotAllowed);
+        };
         let Some(tp) = self.tokens.get(&(chain_id, token_addr)).cloned() else {
             return refuse(Refusal::TokenNotAllowed);
         };
-        let Some(spender) = chain.exact_transfer.as_deref().and_then(|a| evm::parse_address(a).ok()) else {
+        let Some(spender) = chain
+            .exact_transfer
+            .as_deref()
+            .and_then(|a| evm::parse_address(a).ok())
+        else {
             return refuse(Refusal::ModeNotAllowed);
         };
         if amount.0 > tp.max_raw_per_day.0 {
@@ -356,33 +391,53 @@ impl PolicySigner {
             Ok(r) => r,
             Err(reason) => return refuse(reason),
         };
-        let approved = Approved { tx, raw: 0, delivered_shares: 0, is_replacement };
+        let approved = Approved {
+            tx,
+            raw: 0,
+            delivered_shares: 0,
+            is_replacement,
+        };
         PromiseOrValue::Promise(self.reserve_and_sign(chain_id, token_addr, approved, now_s))
     }
 
     pub fn set_agent(&mut self, agent: AccountId) {
         self.assert_owner();
-        require!(agent != env::current_account_id() && agent != self.owner, "agent must be a separate account");
+        require!(
+            agent != env::current_account_id() && agent != self.owner,
+            "agent must be a separate account"
+        );
         self.agent = agent;
     }
 
     pub fn set_params(&mut self, params: Params) {
         self.assert_owner();
-        require!(params.corp_action_window_s >= MIN_CORP_ACTION_WINDOW_S, "corp_action_window_s below the 600 s floor");
-        require!(params.max_observation_age_s > 0, "max_observation_age_s must be positive");
+        require!(
+            params.corp_action_window_s >= MIN_CORP_ACTION_WINDOW_S,
+            "corp_action_window_s below the 600 s floor"
+        );
+        require!(
+            params.max_observation_age_s > 0,
+            "max_observation_age_s must be positive"
+        );
         self.params = params;
     }
 
     pub fn set_sign_gas(&mut self, tgas: u64) {
         self.assert_owner();
-        require!((MIN_SIGN_GAS_TGAS..=250).contains(&tgas), "sign gas out of range");
+        require!(
+            (MIN_SIGN_GAS_TGAS..=250).contains(&tgas),
+            "sign gas out of range"
+        );
         self.sign_gas_tgas = tgas;
     }
 
     pub fn set_chain(&mut self, chain_id: u64, policy: ChainPolicy) {
         self.assert_owner();
         let on_testnet = env::current_account_id().as_str().ends_with(".testnet");
-        require!(!(on_testnet && MAINNET_CHAIN_IDS.contains(&chain_id)), "mainnet chain on a testnet signer");
+        require!(
+            !(on_testnet && MAINNET_CHAIN_IDS.contains(&chain_id)),
+            "mainnet chain on a testnet signer"
+        );
         if let Some(a) = &policy.exact_transfer {
             require!(evm::parse_address(a).is_ok(), "bad exact_transfer address");
         }
@@ -396,8 +451,12 @@ impl PolicySigner {
 
     pub fn set_token(&mut self, chain_id: u64, token: String, policy: TokenPolicy) {
         self.assert_owner();
-        require!(policy.max_raw_per_request.0 <= policy.max_raw_per_day.0, "per-request cap above daily cap");
-        self.tokens.insert((chain_id, parse_or_panic(&token)), policy);
+        require!(
+            policy.max_raw_per_request.0 <= policy.max_raw_per_day.0,
+            "per-request cap above daily cap"
+        );
+        self.tokens
+            .insert((chain_id, parse_or_panic(&token)), policy);
     }
 
     pub fn remove_token(&mut self, chain_id: u64, token: String) {
@@ -453,11 +512,14 @@ impl PolicySigner {
     }
 
     pub fn get_token(&self, chain_id: u64, token: String) -> Option<TokenPolicy> {
-        self.tokens.get(&(chain_id, parse_or_panic(&token))).cloned()
+        self.tokens
+            .get(&(chain_id, parse_or_panic(&token)))
+            .cloned()
     }
 
     pub fn is_recipient_allowed(&self, chain_id: u64, recipient: String) -> bool {
-        self.recipients.contains_key(&(chain_id, parse_or_panic(&recipient)))
+        self.recipients
+            .contains_key(&(chain_id, parse_or_panic(&recipient)))
     }
 
     pub fn get_nonce_state(&self, chain_id: u64) -> NonceState {
@@ -477,7 +539,10 @@ impl PolicySigner {
 
 impl PolicySigner {
     fn assert_owner(&self) {
-        require!(env::predecessor_account_id() == self.owner, "only the owner may do this");
+        require!(
+            env::predecessor_account_id() == self.owner,
+            "only the owner may do this"
+        );
     }
 
     fn roll_day(&mut self, now_s: u64) {
@@ -488,7 +553,13 @@ impl PolicySigner {
         }
     }
 
-    fn context(&self, chain_id: u64, token: Option<Address>, recipient: Option<Address>, now_s: u64) -> Context<'_> {
+    fn context(
+        &self,
+        chain_id: u64,
+        token: Option<Address>,
+        recipient: Option<Address>,
+        now_s: u64,
+    ) -> Context<'_> {
         let day = now_s / SECONDS_PER_DAY;
         let state = self.nonces.get(&chain_id);
         Context {
@@ -496,7 +567,9 @@ impl PolicySigner {
             params: &self.params,
             chain: self.chains.get(&chain_id),
             token: token.and_then(|t| self.tokens.get(&(chain_id, t))),
-            recipient_allowed: recipient.map(|r| self.recipients.contains_key(&(chain_id, r))).unwrap_or(false),
+            recipient_allowed: recipient
+                .map(|r| self.recipients.contains_key(&(chain_id, r)))
+                .unwrap_or(false),
             spent_today: token
                 .and_then(|t| self.spend.get(&(chain_id, t)))
                 .filter(|s| s.day == day)
@@ -512,7 +585,13 @@ impl PolicySigner {
     /// Reserve the nonce and the cap budget, then call the MPC signer. The
     /// reservation happens before the cross-contract call, so two requests
     /// can never both pass on the same budget.
-    fn reserve_and_sign(&mut self, chain_id: u64, token: Address, a: Approved, now_s: u64) -> Promise {
+    fn reserve_and_sign(
+        &mut self,
+        chain_id: u64,
+        token: Address,
+        a: Approved,
+        now_s: u64,
+    ) -> Promise {
         let day = now_s / SECONDS_PER_DAY;
         let request_id = self.next_request_id;
         self.next_request_id += 1;
@@ -521,8 +600,19 @@ impl PolicySigner {
         let reserved = if a.is_replacement { 0 } else { a.raw };
         if reserved > 0 {
             let key = (chain_id, token);
-            let prev = self.spend.get(&key).cloned().filter(|s| s.day == day).unwrap_or(DaySpend { day, spent: 0 });
-            self.spend.insert(key, DaySpend { day, spent: prev.spent + reserved });
+            let prev = self
+                .spend
+                .get(&key)
+                .cloned()
+                .filter(|s| s.day == day)
+                .unwrap_or(DaySpend { day, spent: 0 });
+            self.spend.insert(
+                key,
+                DaySpend {
+                    day,
+                    spent: prev.spent + reserved,
+                },
+            );
         }
 
         let unsigned = a.tx.unsigned_bytes();

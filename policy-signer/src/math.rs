@@ -73,7 +73,10 @@ mod tests {
     #[test]
     fn matches_the_live_mu_conversion() {
         // 1 share of MU at multiplier 1000183456682946507 is 999816576967234660 raw.
-        assert_eq!(shares_to_raw(WAD, 1_000_183_456_682_946_507), Some(999_816_576_967_234_660));
+        assert_eq!(
+            shares_to_raw(WAD, 1_000_183_456_682_946_507),
+            Some(999_816_576_967_234_660)
+        );
     }
 
     #[test]
@@ -87,7 +90,10 @@ mod tests {
     #[test]
     fn floors() {
         assert_eq!(mul_div_floor(10, 1, 3), Some(3));
-        assert_eq!(mul_div_floor(u128::MAX, u128::MAX, u128::MAX), Some(u128::MAX));
+        assert_eq!(
+            mul_div_floor(u128::MAX, u128::MAX, u128::MAX),
+            Some(u128::MAX)
+        );
         // u128::MAX = 2^128 - 1 is divisible by 3, so the exact answer is (MAX / 3) * 2.
         assert_eq!(mul_div_floor(u128::MAX, 2, 3), Some(u128::MAX / 3 * 2));
         assert_eq!(mul_div_floor(u128::MAX, 2, 5), Some(u128::MAX / 5 * 2));

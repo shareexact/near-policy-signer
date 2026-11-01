@@ -39,20 +39,37 @@ pub struct MockSigner {
 impl MockSigner {
     #[init]
     pub fn new() -> Self {
-        Self { fail: false, calls: 0 }
+        Self {
+            fail: false,
+            calls: 0,
+        }
     }
 
     /// Same argument shape as the MPC contract's `sign`.
     #[payable]
     pub fn sign(&mut self, request: SignRequest) -> Value {
-        require!(env::attached_deposit().as_yoctonear() >= 1, "attach at least 1 yoctoNEAR");
-        require!(request.domain_id == 0, "mock supports secp256k1 (domain 0) only");
+        require!(
+            env::attached_deposit().as_yoctonear() >= 1,
+            "attach at least 1 yoctoNEAR"
+        );
+        require!(
+            request.domain_id == 0,
+            "mock supports secp256k1 (domain 0) only"
+        );
         let hash = request.payload_v2.ecdsa.trim_start_matches("0x");
-        require!(hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()), "payload must be 32 bytes hex");
+        require!(
+            hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "payload must be 32 bytes hex"
+        );
         require!(!self.fail, "mock signer set to fail");
         self.calls += 1;
 
-        let seed = format!("{}|{}|{}", env::predecessor_account_id(), request.path, hash);
+        let seed = format!(
+            "{}|{}|{}",
+            env::predecessor_account_id(),
+            request.path,
+            hash
+        );
         let r = hex(&env::keccak256(format!("r|{seed}").as_bytes()));
         let s = hex(&env::keccak256(format!("s|{seed}").as_bytes()));
         json!({
@@ -92,7 +109,9 @@ mod tests {
 
     fn request() -> SignRequest {
         SignRequest {
-            payload_v2: Payload { ecdsa: "d6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62".into() },
+            payload_v2: Payload {
+                ecdsa: "d6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62".into(),
+            },
             path: "robinhood-46630-1".into(),
             domain_id: 0,
         }

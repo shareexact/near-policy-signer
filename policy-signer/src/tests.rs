@@ -56,7 +56,10 @@ fn setup() -> PolicySigner {
     c.set_token(
         CHAIN,
         TOKEN.into(),
-        TokenPolicy { max_raw_per_request: U128(5 * WAD), max_raw_per_day: U128(10 * WAD) },
+        TokenPolicy {
+            max_raw_per_request: U128(5 * WAD),
+            max_raw_per_day: U128(10 * WAD),
+        },
     );
     c.set_recipient(CHAIN, RECIPIENT.into(), true);
     c
@@ -171,7 +174,10 @@ fn mode_not_allowed_without_exact_transfer() {
             exact_transfer: None,
         },
     );
-    assert_eq!(refusal(&mut c, req(Mode::Exact, WAD, 0)), Refusal::ModeNotAllowed);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Exact, WAD, 0)),
+        Refusal::ModeNotAllowed
+    );
 }
 
 #[test]
@@ -248,7 +254,10 @@ fn observation_crossed_change() {
 #[test]
 fn zero_amount_and_floored_to_zero() {
     let mut c = setup();
-    assert_eq!(refusal(&mut c, req(Mode::Direct, 0, 0)), Refusal::ZeroAmount);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, 0, 0)),
+        Refusal::ZeroAmount
+    );
     // 1 wei of a share at multiplier 4.0 floors to 0 raw; with full
     // shortfall allowed it is reported as ZeroAmount, as ExactTransfer does.
     let mut r = req(Mode::Direct, 1, 0);
@@ -273,14 +282,20 @@ fn share_shortfall() {
 #[test]
 fn amount_cap_per_request_and_per_day() {
     let mut c = setup();
-    assert_eq!(refusal(&mut c, req(Mode::Direct, 6 * WAD, 0)), Refusal::AmountCapExceeded);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, 6 * WAD, 0)),
+        Refusal::AmountCapExceeded
+    );
 
     accepted(&mut c, req(Mode::Direct, 5 * WAD, 0));
     settle(&mut c, 1, true);
     accepted(&mut c, req(Mode::Direct, 5 * WAD, 1));
     settle(&mut c, 2, true);
     // 10 of 10 spent today.
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 2)), Refusal::AmountCapExceeded);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 2)),
+        Refusal::AmountCapExceeded
+    );
 }
 
 #[test]
@@ -320,16 +335,25 @@ fn gas_caps_and_invalid_fees() {
 fn request_in_flight_blocks_a_second_request() {
     let mut c = setup();
     accepted(&mut c, req(Mode::Direct, WAD, 0));
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 1)), Refusal::RequestInFlight);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 1)),
+        Refusal::RequestInFlight
+    );
 }
 
 #[test]
 fn nonce_out_of_order() {
     let mut c = setup();
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 1)), Refusal::NonceOutOfOrder);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 1)),
+        Refusal::NonceOutOfOrder
+    );
     accepted(&mut c, req(Mode::Direct, WAD, 0));
     settle(&mut c, 1, true);
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 5)), Refusal::NonceOutOfOrder);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 5)),
+        Refusal::NonceOutOfOrder
+    );
 }
 
 #[test]
@@ -339,7 +363,10 @@ fn replacement_rules() {
     settle(&mut c, 1, true);
 
     // Same nonce, same call, fees not strictly higher.
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 0)), Refusal::InvalidReplacement);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 0)),
+        Refusal::InvalidReplacement
+    );
 
     // Same nonce, higher fees, different call.
     let mut r = req(Mode::Direct, 2 * WAD, 0);
@@ -362,10 +389,16 @@ fn replacement_rules() {
 fn request_cap_exceeded() {
     let mut c = setup();
     as_owner(NOW_S);
-    c.set_params(Params { max_requests_per_day: 1, ..Params::default() });
+    c.set_params(Params {
+        max_requests_per_day: 1,
+        ..Params::default()
+    });
     accepted(&mut c, req(Mode::Direct, WAD, 0));
     settle(&mut c, 1, true);
-    assert_eq!(refusal(&mut c, req(Mode::Direct, WAD, 1)), Refusal::RequestCapExceeded);
+    assert_eq!(
+        refusal(&mut c, req(Mode::Direct, WAD, 1)),
+        Refusal::RequestCapExceeded
+    );
 }
 
 #[test]
@@ -375,7 +408,11 @@ fn refusals_are_logged_as_events() {
     r.chain_id = 1;
     refusal(&mut c, r);
     let logs = get_logs();
-    assert!(logs.iter().any(|l| l.contains("\"event\":\"refused\"") && l.contains("ChainNotAllowed")), "{logs:?}");
+    assert!(
+        logs.iter()
+            .any(|l| l.contains("\"event\":\"refused\"") && l.contains("ChainNotAllowed")),
+        "{logs:?}"
+    );
 }
 
 /* --------------------------- signing lifecycle --------------------------- */
@@ -394,17 +431,21 @@ fn sign_call_carries_the_policy_checked_sighash() {
         .iter()
         .flat_map(|rc| rc.actions.iter())
         .find_map(|a| match a {
-            near_sdk::mock::MockAction::FunctionCallWeight { method_name, args, attached_deposit, .. }
-                if method_name == b"sign" =>
-            {
-                Some((args.clone(), *attached_deposit))
-            }
+            near_sdk::mock::MockAction::FunctionCallWeight {
+                method_name,
+                args,
+                attached_deposit,
+                ..
+            } if method_name == b"sign" => Some((args.clone(), *attached_deposit)),
             _ => None,
         })
         .expect("a sign call");
     let args: Value = serde_json::from_slice(&sign.0).unwrap();
     let sighash = preview.sighash.unwrap();
-    assert_eq!(args["request"]["payload_v2"]["Ecdsa"], sighash.trim_start_matches("0x"));
+    assert_eq!(
+        args["request"]["payload_v2"]["Ecdsa"],
+        sighash.trim_start_matches("0x")
+    );
     assert_eq!(args["request"]["path"], "robinhood-46630-1");
     assert_eq!(args["request"]["domain_id"], 0);
     assert_eq!(sign.1, NearToken::from_yoctonear(1));
@@ -415,7 +456,12 @@ fn success_advances_nonce_and_returns_the_signature() {
     let mut c = setup();
     accepted(&mut c, req(Mode::Direct, WAD, 0));
     match settle(&mut c, 1, true) {
-        Outcome::Signed { nonce, signature, sighash, .. } => {
+        Outcome::Signed {
+            nonce,
+            signature,
+            sighash,
+            ..
+        } => {
             assert_eq!(nonce, 0);
             assert_eq!(signature["recovery_id"], 0);
             assert!(sighash.starts_with("0x"));
@@ -433,7 +479,10 @@ fn failure_releases_nonce_and_budget() {
     let mut c = setup();
     accepted(&mut c, req(Mode::Direct, 5 * WAD, 0));
     assert_eq!(c.get_spent_today(CHAIN, TOKEN.into()).0, 5 * WAD);
-    assert!(matches!(settle(&mut c, 1, false), Outcome::SignFailed { .. }));
+    assert!(matches!(
+        settle(&mut c, 1, false),
+        Outcome::SignFailed { .. }
+    ));
     let st = c.get_nonce_state(CHAIN);
     assert_eq!(st.next, 0, "nonce 0 was never signed");
     assert!(st.in_flight.is_none());
@@ -448,7 +497,10 @@ fn stale_callback_after_owner_clear_changes_nothing() {
     accepted(&mut c, req(Mode::Direct, WAD, 0));
     as_owner(NOW_S);
     c.clear_in_flight(CHAIN);
-    assert!(matches!(settle(&mut c, 1, true), Outcome::SignFailed { .. }));
+    assert!(matches!(
+        settle(&mut c, 1, true),
+        Outcome::SignFailed { .. }
+    ));
     assert_eq!(c.get_nonce_state(CHAIN).next, 0);
 }
 
@@ -491,7 +543,12 @@ fn contract_itself_is_not_the_owner() {
 fn agent_cannot_request_an_approve() {
     let mut c = setup();
     as_agent(NOW_S);
-    let _ = c.request_approve(CHAIN, TOKEN.into(), U128(WAD), req(Mode::Direct, WAD, 0).fees);
+    let _ = c.request_approve(
+        CHAIN,
+        TOKEN.into(),
+        U128(WAD),
+        req(Mode::Direct, WAD, 0).fees,
+    );
 }
 
 #[test]
@@ -527,7 +584,10 @@ fn mainnet_chain_is_never_allowlisted_on_testnet() {
 fn window_floor_is_enforced() {
     let mut c = setup();
     as_owner(NOW_S);
-    c.set_params(Params { corp_action_window_s: 599, ..Params::default() });
+    c.set_params(Params {
+        corp_action_window_s: 599,
+        ..Params::default()
+    });
 }
 
 /* ----------------------------- owner approve ----------------------------- */
@@ -538,11 +598,16 @@ fn owner_approve_targets_exact_transfer_and_is_capped() {
     as_owner(NOW_S);
     let fees = req(Mode::Direct, WAD, 0).fees;
     match c.request_approve(CHAIN, TOKEN.into(), U128(11 * WAD), fees.clone()) {
-        PromiseOrValue::Value(Outcome::Refused { reason }) => assert_eq!(reason, Refusal::AmountCapExceeded),
+        PromiseOrValue::Value(Outcome::Refused { reason }) => {
+            assert_eq!(reason, Refusal::AmountCapExceeded)
+        }
         _ => panic!("expected AmountCapExceeded"),
     }
     as_owner(NOW_S);
-    assert!(matches!(c.request_approve(CHAIN, TOKEN.into(), U128(10 * WAD), fees), PromiseOrValue::Promise(_)));
+    assert!(matches!(
+        c.request_approve(CHAIN, TOKEN.into(), U128(10 * WAD), fees),
+        PromiseOrValue::Promise(_)
+    ));
     let st = c.get_nonce_state(CHAIN);
     let flight = st.in_flight.unwrap();
     assert_eq!(flight.record.to, TOKEN);
@@ -572,7 +637,10 @@ fn direct_transfer_matches_viem() {
          a9059cbb000000000000000000000000000000000000000000000000000000000000dead\
          0000000000000000000000000000000000000000000000000de00fe126add464c0"
     );
-    assert_eq!(p.sighash.unwrap(), "0xd6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62");
+    assert_eq!(
+        p.sighash.unwrap(),
+        "0xd6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62"
+    );
     assert_eq!(p.raw.unwrap().0, 999_816_576_967_234_660);
 }
 
@@ -593,7 +661,10 @@ fn exact_transfer_matches_viem() {
          0000000000000000000000000000000000000000000000000de0b6b3a7640000\
          0000000000000000000000000000000000000000000000000000000000000000c0"
     );
-    assert_eq!(p.sighash.unwrap(), "0x2af050832cd51552e2244b0c10632b31e83b5d5f1bd148d9cfd57172798a8f87");
+    assert_eq!(
+        p.sighash.unwrap(),
+        "0x2af050832cd51552e2244b0c10632b31e83b5d5f1bd148d9cfd57172798a8f87"
+    );
 }
 
 #[test]
@@ -602,6 +673,9 @@ fn preview_and_request_agree() {
     let mut r = req(Mode::Direct, WAD, 0);
     r.recipient = STRANGER.into();
     as_agent(NOW_S);
-    assert_eq!(c.preview(r.clone()).refusal, Some(Refusal::RecipientNotAllowed));
+    assert_eq!(
+        c.preview(r.clone()).refusal,
+        Some(Refusal::RecipientNotAllowed)
+    );
     assert_eq!(refusal(&mut c, r), Refusal::RecipientNotAllowed);
 }

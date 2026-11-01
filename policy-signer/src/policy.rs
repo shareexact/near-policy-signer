@@ -255,7 +255,10 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Approved, Refusa
 
     // Build the exact call now: the replacement rule compares it byte for byte.
     let (to, input) = match exact_transfer {
-        Some(et) => (et, evm::calldata_transfer_shares(&token, &recipient, ui_shares, req.max_shortfall.0)),
+        Some(et) => (
+            et,
+            evm::calldata_transfer_shares(&token, &recipient, ui_shares, req.max_shortfall.0),
+        ),
         None => (token, evm::calldata_transfer(&recipient, raw)),
     };
     let tx = TxFields {
@@ -279,7 +282,12 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Approved, Refusa
         return Err(Refusal::AmountCapExceeded);
     }
 
-    Ok(Approved { tx, raw, delivered_shares: delivered, is_replacement })
+    Ok(Approved {
+        tx,
+        raw,
+        delivered_shares: delivered,
+        is_replacement,
+    })
 }
 
 /// Returns whether the transaction is a replacement of the last signed one.
@@ -289,7 +297,8 @@ pub fn check_nonce(tx: &TxFields, ctx: &Context) -> Result<bool, Refusal> {
     }
     match ctx.last_signed {
         Some(last) if last.nonce == tx.nonce => {
-            let same_call = last.to == evm::address_hex(&tx.to) && last.input_hash == input_hash(&tx.input);
+            let same_call =
+                last.to == evm::address_hex(&tx.to) && last.input_hash == input_hash(&tx.input);
             let higher_fees = tx.max_fee_per_gas > last.max_fee_per_gas.0
                 && tx.max_priority_fee_per_gas > last.max_priority_fee_per_gas.0;
             if same_call && higher_fees {
