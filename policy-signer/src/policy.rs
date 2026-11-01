@@ -99,8 +99,16 @@ pub struct ChainPolicy {
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
 pub struct TokenPolicy {
+    /// Raw-unit caps. Hard in Direct mode, where the raw amount is in the
+    /// calldata.
     pub max_raw_per_request: U128,
     pub max_raw_per_day: U128,
+    /// Share caps, 18 decimals. Hard in Exact mode, where the share amount is
+    /// in the calldata and the chain converts it at execution. Both pairs
+    /// apply in both modes, so a false multiplier cannot move more than
+    /// either cap allows.
+    pub max_shares_per_request: U128,
+    pub max_shares_per_day: U128,
 }
 
 #[near(serializers = [json, borsh])]
@@ -152,6 +160,8 @@ pub struct Context<'a> {
     pub recipient_allowed: bool,
     /// Raw already spent today on this (chain, token).
     pub spent_today: u128,
+    /// Shares already spent today on this (chain, token), 18 decimals.
+    pub shares_spent_today: u128,
     pub requests_today: u32,
     pub in_flight: bool,
     pub next_nonce: u64,
@@ -162,6 +172,8 @@ pub struct Context<'a> {
 #[derive(Clone, Debug)]
 pub struct Approved {
     pub tx: TxFields,
+    /// Shares requested, 18 decimals; reserved against the daily share cap.
+    pub ui_shares: u128,
     /// Raw units leaving the derived address, by C1's own computation.
     pub raw: u128,
     /// Shares those raw units represent after flooring.
@@ -279,16 +291,24 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Approved, Refusa
     // Nonce: the next fresh one, or a fee bump of the last signed call.
     let is_replacement = check_nonce(&tx, ctx)?;
 
-    // Spend caps. A replacement re-signs a transfer already counted.
-    if raw > token_policy.max_raw_per_request.0 {
+    // Spend caps, in raw units and in shares. The raw amount is computed from
+    // the agent's multiplier, so in Exact mode it can be understated; the
+    // share amount is what Exact mode puts on chain. Checking both closes
+    // that gap. A replacement re-signs a transfer already counted.
+    if raw > token_policy.max_raw_per_request.0 || ui_shares > token_policy.max_shares_per_request.0
+    {
         return Err(Refusal::AmountCapExceeded);
     }
-    if !is_replacement && ctx.spent_today.saturating_add(raw) > token_policy.max_raw_per_day.0 {
+    if !is_replacement
+        && (ctx.spent_today.saturating_add(raw) > token_policy.max_raw_per_day.0
+            || ctx.shares_spent_today.saturating_add(ui_shares) > token_policy.max_shares_per_day.0)
+    {
         return Err(Refusal::AmountCapExceeded);
     }
 
     Ok(Approved {
         tx,
+        ui_shares,
         raw,
         delivered_shares: delivered,
         is_replacement,

@@ -46,7 +46,7 @@ Where a refusal means the same condition as a ShareExact contract error, it uses
 | `MultiplierChangePending` | `ExactTransfer.MultiplierChangePending` | A change is scheduled within `corp_action_window_s` (default 7200 s, floor 600 s) |
 | `ZeroAmount` | `ExactTransfer.ZeroAmount` | Zero shares, or a request that floors to zero raw units |
 | `ShareShortfall` | `ExactTransfer.ShareShortfall` | Floor rounding loses more than `max_shortfall` |
-| `AmountCapExceeded` | | Over the per-request or per-day raw cap for the token |
+| `AmountCapExceeded` | | Over a per-request or per-day cap for the token, in raw units or in shares. Both apply in both modes: raw caps bind Direct mode, where raw is in the calldata; share caps bind Exact mode, where shares are in the calldata |
 | `GasCapExceeded` | | Fees or gas limit over the chain's caps |
 | `InvalidFees` | | Priority fee above max fee, or zero gas limit |
 | `RequestInFlight` | | A request on this chain is still waiting for the MPC signer |
@@ -78,7 +78,7 @@ No keys, funds or network needed. These are unit tests; the near-workspaces sand
 cargo test
 ```
 
-Expected result: `policy-signer` 46 passed, `mock-signer` 4 passed. The tests cover every refusal above, reservation and release, the replacement rule, access control, and EIP-1559 encoding. The encoding tests compare C1's output byte for byte with transactions serialized by viem 2.21.0 (`serializeTransaction`, chain 46630).
+Expected result: `policy-signer` 50 passed, `mock-signer` 4 passed. The tests cover every refusal above, including a false multiplier in Exact mode, reservation and release, the replacement rule, access control, and EIP-1559 encoding. The encoding tests compare C1's output byte for byte with transactions serialized by viem 2.21.0 (`serializeTransaction`, chain 46630).
 
 ## Build for NEAR
 

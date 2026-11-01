@@ -59,6 +59,8 @@ fn setup() -> PolicySigner {
         TokenPolicy {
             max_raw_per_request: U128(5 * WAD),
             max_raw_per_day: U128(10 * WAD),
+            max_shares_per_request: U128(5 * WAD),
+            max_shares_per_day: U128(10 * WAD),
         },
     );
     c.set_recipient(CHAIN, RECIPIENT.into(), true);
@@ -683,4 +685,69 @@ fn preview_and_request_agree() {
         Some(Refusal::RecipientNotAllowed)
     );
     assert_eq!(refusal(&mut c, r), Refusal::RecipientNotAllowed);
+}
+
+/* ------------------------- share caps (Exact mode) ------------------------ */
+
+#[test]
+fn false_multiplier_cannot_bypass_caps_in_exact_mode() {
+    // Agent claims multiplier 100.0 and asks for 400 shares. C1's raw estimate
+    // is 4 (under the raw cap), but Exact mode puts 400 shares on chain. The
+    // share cap catches it.
+    let mut c = setup();
+    let mut r = req(Mode::Exact, 400 * WAD, 0);
+    r.observed.multiplier = U128(100 * WAD);
+    r.observed.new_multiplier = Some(U128(100 * WAD));
+    assert_eq!(refusal(&mut c, r), Refusal::AmountCapExceeded);
+}
+
+#[test]
+fn share_cap_per_request_and_per_day() {
+    let mut c = setup();
+    // 6 shares at multiplier 2.0 is 3 raw: under the raw cap, over the share cap.
+    let mut r = req(Mode::Exact, 6 * WAD, 0);
+    r.observed.multiplier = U128(2 * WAD);
+    r.observed.new_multiplier = Some(U128(2 * WAD));
+    assert_eq!(refusal(&mut c, r), Refusal::AmountCapExceeded);
+
+    // 5 + 5 shares at 2.0 (5 raw in total) fill the daily share cap.
+    for (nonce, id) in [(0u64, 1u64), (1, 2)] {
+        let mut r = req(Mode::Exact, 5 * WAD, nonce);
+        r.observed.multiplier = U128(2 * WAD);
+        r.observed.new_multiplier = Some(U128(2 * WAD));
+        accepted(&mut c, r);
+        settle(&mut c, id, true);
+    }
+    assert_eq!(c.get_shares_spent_today(CHAIN, TOKEN.into()).0, 10 * WAD);
+    assert_eq!(c.get_spent_today(CHAIN, TOKEN.into()).0, 5 * WAD);
+    let mut r = req(Mode::Exact, WAD, 2);
+    r.observed.multiplier = U128(2 * WAD);
+    r.observed.new_multiplier = Some(U128(2 * WAD));
+    assert_eq!(refusal(&mut c, r), Refusal::AmountCapExceeded);
+}
+
+#[test]
+fn failure_releases_reserved_shares() {
+    let mut c = setup();
+    accepted(&mut c, req(Mode::Exact, 5 * WAD, 0));
+    assert_eq!(c.get_shares_spent_today(CHAIN, TOKEN.into()).0, 5 * WAD);
+    settle(&mut c, 1, false);
+    assert_eq!(c.get_shares_spent_today(CHAIN, TOKEN.into()).0, 0);
+}
+
+#[test]
+#[should_panic(expected = "per-request cap above daily cap")]
+fn share_caps_must_be_ordered() {
+    let mut c = setup();
+    as_owner(NOW_S);
+    c.set_token(
+        CHAIN,
+        TOKEN.into(),
+        TokenPolicy {
+            max_raw_per_request: U128(1),
+            max_raw_per_day: U128(1),
+            max_shares_per_request: U128(2),
+            max_shares_per_day: U128(1),
+        },
+    );
 }

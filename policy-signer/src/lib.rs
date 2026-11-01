@@ -46,7 +46,10 @@ const EVENT_VERSION: &str = "1.0.0";
 #[derive(Clone, Debug, Default)]
 pub struct DaySpend {
     pub day: u64,
+    /// Raw units.
     pub spent: u128,
+    /// Shares, 18 decimals.
+    pub shares: u128,
 }
 
 #[near(serializers = [borsh, json])]
@@ -65,8 +68,9 @@ pub struct InFlight {
     pub request_id: u64,
     pub nonce: u64,
     pub token: String,
-    /// Raw reserved against today's cap, released if signing fails.
+    /// Raw and shares reserved against today's caps, released if signing fails.
     pub reserved_raw: U128,
+    pub reserved_shares: U128,
     pub day: u64,
     pub is_replacement: bool,
     pub record: SignedRecord,
@@ -302,8 +306,14 @@ impl PolicySigner {
                     let key = (chain_id, token);
                     if let Some(s) = self.spend.get(&key).cloned() {
                         if s.day == flight.day {
-                            let spent = s.spent.saturating_sub(flight.reserved_raw.0);
-                            self.spend.insert(key, DaySpend { day: s.day, spent });
+                            self.spend.insert(
+                                key,
+                                DaySpend {
+                                    day: s.day,
+                                    spent: s.spent.saturating_sub(flight.reserved_raw.0),
+                                    shares: s.shares.saturating_sub(flight.reserved_shares.0),
+                                },
+                            );
                         }
                     }
                 }
@@ -333,6 +343,7 @@ impl PolicySigner {
     ) -> PromiseOrValue<Outcome> {
         self.assert_owner();
         let now_s = now_s();
+        self.roll_day(now_s);
         let refuse = |reason: Refusal| {
             emit(
                 "refused",
@@ -388,6 +399,7 @@ impl PolicySigner {
             token: Some(&tp),
             recipient_allowed: true,
             spent_today: 0,
+            shares_spent_today: 0,
             requests_today: 0,
             in_flight: false,
             next_nonce: state.next,
@@ -399,6 +411,7 @@ impl PolicySigner {
         };
         let approved = Approved {
             tx,
+            ui_shares: 0,
             raw: 0,
             delivered_shares: 0,
             is_replacement,
@@ -462,7 +475,8 @@ impl PolicySigner {
     pub fn set_token(&mut self, chain_id: u64, token: String, policy: TokenPolicy) {
         self.assert_owner();
         require!(
-            policy.max_raw_per_request.0 <= policy.max_raw_per_day.0,
+            policy.max_raw_per_request.0 <= policy.max_raw_per_day.0
+                && policy.max_shares_per_request.0 <= policy.max_shares_per_day.0,
             "per-request cap above daily cap"
         );
         self.tokens
@@ -540,10 +554,20 @@ impl PolicySigner {
         self.nonces.get(&chain_id).cloned().unwrap_or_default()
     }
 
+    /// Raw units spent today on this token.
     pub fn get_spent_today(&self, chain_id: u64, token: String) -> U128 {
         let day = now_s() / SECONDS_PER_DAY;
         match self.spend.get(&(chain_id, parse_or_panic(&token))) {
             Some(s) if s.day == day => U128(s.spent),
+            _ => U128(0),
+        }
+    }
+
+    /// Shares (18 decimals) spent today on this token.
+    pub fn get_shares_spent_today(&self, chain_id: u64, token: String) -> U128 {
+        let day = now_s() / SECONDS_PER_DAY;
+        match self.spend.get(&(chain_id, parse_or_panic(&token))) {
+            Some(s) if s.day == day => U128(s.shares),
             _ => U128(0),
         }
     }
@@ -589,6 +613,11 @@ impl PolicySigner {
                 .filter(|s| s.day == day)
                 .map(|s| s.spent)
                 .unwrap_or(0),
+            shares_spent_today: token
+                .and_then(|t| self.spend.get(&(chain_id, t)))
+                .filter(|s| s.day == day)
+                .map(|s| s.shares)
+                .unwrap_or(0),
             requests_today: self.requests_today,
             in_flight: state.map(|s| s.in_flight.is_some()).unwrap_or(false),
             next_nonce: state.map(|s| s.next).unwrap_or(0),
@@ -611,20 +640,29 @@ impl PolicySigner {
         self.next_request_id += 1;
         self.requests_today += 1;
 
-        let reserved = if a.is_replacement { 0 } else { a.raw };
-        if reserved > 0 {
+        let (reserved, reserved_shares) = if a.is_replacement {
+            (0, 0)
+        } else {
+            (a.raw, a.ui_shares)
+        };
+        if reserved > 0 || reserved_shares > 0 {
             let key = (chain_id, token);
             let prev = self
                 .spend
                 .get(&key)
                 .cloned()
                 .filter(|s| s.day == day)
-                .unwrap_or(DaySpend { day, spent: 0 });
+                .unwrap_or(DaySpend {
+                    day,
+                    spent: 0,
+                    shares: 0,
+                });
             self.spend.insert(
                 key,
                 DaySpend {
                     day,
                     spent: prev.spent + reserved,
+                    shares: prev.shares + reserved_shares,
                 },
             );
         }
@@ -637,6 +675,7 @@ impl PolicySigner {
             nonce: a.tx.nonce,
             token: evm::address_hex(&token),
             reserved_raw: U128(reserved),
+            reserved_shares: U128(reserved_shares),
             day,
             is_replacement: a.is_replacement,
             record: record_of(&a.tx),
