@@ -2,22 +2,22 @@
 
 An AI agent that can move Stock Tokens should never hold a key.
 
-This is the NEAR control plane for ShareExact. The agent holds only a NEAR function-call key. The contract builds the exact Robinhood Chain transaction itself, checks it against the owner's policy and the share unit, and only then asks the NEAR MPC network for a signature through Chain Signatures. **The signed payload is exactly the payload the policy checked.** When the agent gets the number wrong (shares instead of raw units, a stale multiplier, a pending split, an amount over the cap), the contract refuses with a named reason and nothing is signed.
+This repository is a NEAR HACKATHON entry and the NEAR control plane for ShareExact. The agent holds only a NEAR function-call key. The contract builds the exact Robinhood Chain transaction itself, checks it against the owner's policy and the share unit, and only then asks the NEAR MPC network for a signature through Chain Signatures. **The signed payload is exactly the payload the policy checked.** When the agent gets the number wrong (shares instead of raw units, a stale multiplier, a pending split, an amount over the cap), the contract refuses with a named reason and nothing is signed.
 
 **Why NEAR:** the agent holds no key; only the NEAR contract can obtain an MPC signature, and only for a transaction it built and checked itself.
 
 **How it extends ShareExact:** ShareExact already enforces exact share delivery on Robinhood Chain. This contract adds a policy layer for any agent allowed to move those tokens: a control that does not depend on the agent being correct, with daily caps, allowlists and an onchain refusal log.
 
-## What is new in the hackathon window
+## What is in this repository
 
-ShareExact (contracts, SDK and desk on Robinhood Chain) existed before the hackathon. Only the code under `near/` is the entry. Everything else in this repository is baseline.
+All code here was written in the hackathon window. It builds on [ShareExact](https://github.com/shareexact/shareexact)'s `ExactTransfer` contract and SDK (MIT), which predate this hackathon and are not part of this entry. Exact mode calls a deployed `ExactTransfer`; no ShareExact code is copied here.
 
 | Path | What it is |
 |---|---|
-| `near/policy-signer` | C1. Rust NEAR contract: policy, refusals, EIP-1559 construction, MPC `sign` call and callback |
-| `near/mock-signer` | C7. Mock MPC signer with the same `sign` shape, for sandbox tests without keys or funds. Its signatures do not recover and must never be broadcast |
+| `policy-signer` | C1. Rust NEAR contract: policy, refusals, EIP-1559 construction, MPC `sign` call and callback |
+| `mock-signer` | C7. Mock MPC signer with the same `sign` shape, for sandbox tests without keys or funds. Its signatures do not recover and must never be broadcast |
 
-Planned, not in this directory yet: the agent runtime (C2), the AI planner (C6) and an owner-gated mock Stock Token for testnet (C5).
+Planned, not in this repository yet: the agent runtime (C2), the AI planner (C6) and an owner-gated mock Stock Token for testnet (C5).
 
 ## Request flow
 
@@ -68,14 +68,13 @@ Stated limits a user must know:
 - The request counter is not released when signing fails; it bounds MPC calls, not transfers.
 - **Never delete the C1 account.** The derived EVM address depends only on the account id and the path, so whoever re-creates the name controls the address.
 - The owner, agent and contract must be three different accounts; `new` enforces this.
-- An in-flight request that never receives a callback can be cleared by the owner. Clearing does not release budget, because a signature may still be in flight.
+- If the callback itself fails (for example, out of gas), the owner can clear the in-flight request. Clearing does not release budget or advance the nonce. MPC errors and timeouts do not need this: the callback handles them.
 
 ## Run the tests
 
-No keys, funds or network needed. These are unit tests; the near-workspaces sandbox tests with the mock signer are planned and not in this directory yet.
+No keys, funds or network needed. These are unit tests; the near-workspaces sandbox tests with the mock signer are planned and not in this repository yet.
 
 ```sh
-cd near
 cargo test
 ```
 
@@ -86,13 +85,13 @@ Expected result: `policy-signer` 46 passed, `mock-signer` 4 passed. The tests co
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install cargo-near
-cd near/policy-signer && cargo near build non-reproducible-wasm
+cd policy-signer && cargo near build non-reproducible-wasm
 cd ../mock-signer && cargo near build non-reproducible-wasm
 ```
 
 ## Deploy to NEAR testnet (not yet done)
 
-Nothing in this directory has been deployed. The steps below are the plan for gate G1.
+Nothing in this repository has been deployed. The steps below are the plan for gate G1.
 
 1. Create three testnet accounts: the contract, a separate owner and a separate agent.
 2. Deploy and initialize:
@@ -107,7 +106,7 @@ To confirm at G1: that the `sign` argument shape (`request.payload_v2.Ecdsa`, `p
 
 ## Libraries
 
-near-sdk 5.30, omni-transaction 0.5 (Apache-2.0, `evm` feature only) for EIP-1559 serialization, viem 2.21 (test vectors only). `@shareexact/sdk` and the ShareExact contracts are this project's own baseline code.
+near-sdk 5.30, omni-transaction 0.5 (Apache-2.0, `evm` feature only) for EIP-1559 serialization, viem 2.21 (test vectors only). ShareExact's `ExactTransfer` and `@shareexact/sdk` are the same author's earlier work (MIT), used as an external dependency.
 
 ---
 
