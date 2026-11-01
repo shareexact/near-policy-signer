@@ -31,7 +31,7 @@ C1 cannot read Robinhood Chain state; NEAR Chain Signatures is outbound only. It
 
 ## Refusals
 
-Where a refusal means the same condition as a ShareExact contract error, it uses the same name. The predicates for a pending unit change match `unitChangeImminent` in `@shareexact/sdk` and `ShareExactGuard`.
+Where a refusal means the same condition as a ShareExact contract error, it uses the same name. For a complete observation, the pending-change predicate matches `unitChangeImminent` in `@shareexact/sdk` and `ShareExactGuard`. An incomplete observation is refused as `ObservationIncomplete` first, and there the SDK may answer differently.
 
 | Refusal | Same name as | Condition |
 |---|---|---|
