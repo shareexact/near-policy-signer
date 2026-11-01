@@ -78,7 +78,7 @@ No keys, funds or network needed. These are unit tests; the near-workspaces sand
 cargo test
 ```
 
-Expected result: `policy-signer` 50 passed, `mock-signer` 4 passed. The tests cover every refusal above, including a false multiplier in Exact mode, reservation and release, the replacement rule, access control, and EIP-1559 encoding. The encoding tests compare C1's output byte for byte with transactions serialized by viem 2.21.0 (`serializeTransaction`, chain 46630).
+Expected result: `policy-signer` 51 passed, `mock-signer` 4 passed. The tests cover every refusal above, including a false multiplier in Exact mode, reservation and release, the replacement rule, access control, and EIP-1559 encoding. The encoding tests compare C1's output byte for byte with transactions serialized by viem 2.21.0 (`serializeTransaction`, chain 46630).
 
 ## Build for NEAR
 

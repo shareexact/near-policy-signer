@@ -622,6 +622,22 @@ fn owner_approve_targets_exact_transfer_and_is_capped() {
     assert_eq!(flight.record.input_hash, policy::input_hash(&expected));
 }
 
+#[test]
+fn approve_on_a_new_day_counts_for_that_day() {
+    let mut c = setup();
+    accepted(&mut c, req(Mode::Direct, WAD, 0));
+    settle(&mut c, 1, true);
+    assert_eq!(c.get_config().requests_today, 1);
+
+    as_owner(NOW_S + 86_400);
+    let fees = req(Mode::Direct, WAD, 1).fees;
+    assert!(matches!(
+        c.request_approve(CHAIN, TOKEN.into(), U128(WAD), fees),
+        PromiseOrValue::Promise(_)
+    ));
+    assert_eq!(c.get_config().requests_today, 1);
+}
+
 /* ------------------------- encoding: viem vectors ------------------------ */
 
 #[test]
