@@ -166,7 +166,9 @@ All code in this repository was written in the hackathon window, starting 2026-1
 
 ## Libraries
 
-near-sdk 5.30; omni-transaction 0.5 (`evm` feature) for EIP-1559 serialization; viem 2.21 and near-api-js 4.0 in the agent; zod for validation; vitest. The planner can use NEAR AI Cloud through its OpenAI-compatible API (`https://cloud-api.near.ai/v1`).
+near-sdk 5.30; omni-transaction 0.5 (`evm` feature) for EIP-1559 serialization; viem 2.21 and near-api-js 4.0 in the agent; zod for validation; vitest; NEAR Wallet Selector 8.10 and Vite 5.4 in the console. The planner can use NEAR AI Cloud through its OpenAI-compatible API (`https://cloud-api.near.ai/v1`).
+
+Parts of the code were written with AI coding assistance; the author reviewed and tested all of it.
 
 ## License
 
