@@ -1,6 +1,6 @@
 # Policy Signer
 
-**A spending firewall for AI agents that move tokens on EVM chains, built on NEAR Chain Signatures.**
+**A spending firewall for AI agents that move money on EVM chains, built on NEAR Chain Signatures.** ETH, any ERC-20, and Stock Tokens, on any EVM chain the NEAR MPC network signs for.
 
 An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key at all. It holds a NEAR function-call key that can do one thing: ask a NEAR contract to send a transfer. The contract builds the exact EVM transaction itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign it. **The payload signed is exactly the payload checked.** Large transfers wait for a human. Anything outside the policy is refused with a named reason, recorded on chain, and nothing is signed.
 
@@ -17,7 +17,7 @@ flowchart LR
   A -->|request + observation<br/>function-call key| C[Policy contract on NEAR]
   C -->|refused: named reason, event| A
   C -->|above soft limit| Q[Approval queue]
-  Q -->|owner approves in wallet| A
+  Q -->|owner approves, signed with the owner key| A
   C -->|builds tx, reserves budget| M[NEAR MPC network<br/>Chain Signatures]
   M -->|signature| C
   C -->|unsigned tx + signature| A
@@ -34,13 +34,15 @@ flowchart LR
 
 ## What it guarantees
 
-- The agent can only obtain signatures for transfers the contract built, to allowlisted tokens and recipients, within caps, with capped fees.
+- The agent can only obtain signatures for transfers the contract built, to allowlisted tokens and recipients, within caps, with capped fees. Native coin and ERC-20 transfers on any EVM chain the owner allowlists; major mainnets can never be allowlisted on a testnet deployment.
 - **Caps cannot be shrunk by a false observation.** Every token has one kind and one budget, counted in the unit the signed calldata carries (see [Token kinds](#token-kinds)).
 - Amounts above a soft limit need the owner's approval: single-use, expiring tickets that never lift a hard cap.
 - The owner can pause at once, and can void signatures already issued by burning their nonces.
 - Each agent has its own request limit and optional per-token daily cap, on top of the global caps.
-- Every refusal, queue entry, signature and owner action is a NEP-297 event: an audit trail on chain.
-- The code can change only through a 48 hour timelock with an on-chain announcement, or never, once `disable_upgrades` is called.
+- A stolen owner key cannot loosen policy on the spot: with `policy_delay_s` set, every change that adds a recipient, raises a cap or adds an agent is announced and takes effect only after the delay. Removals and pause are always immediate.
+- A failed or timed-out signature is treated as possibly issued: its nonce is not reused for a different transfer and its budget is not released.
+- Every refusal, queue entry, signature, policy change and owner action is a NEP-297 event: an audit trail on chain.
+- The code can change only through a timelock (48 hours by default; it can be raised, never lowered) with an on-chain announcement, or never, once `disable_upgrades` is called.
 
 What it does not protect against, and what the operator must do (delete the contract account's keys, size allowances, use burns), is in [SECURITY.md](SECURITY.md).
 
@@ -48,12 +50,12 @@ What it does not protect against, and what the operator must do (delete the cont
 
 | Do | See |
 |---|---|
-| `cargo test` | `policy-signer` 75 passed, `mock-signer` 5 passed: every refusal, the approval queue, pause and burn, owner controls, the upgrade timelock, and transaction encoding |
-| `cd agent && npm ci && npm test` | 25 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong one |
+| `cargo test` | `policy-signer` 88 passed, `mock-signer` 5 passed: every refusal, the approval queue, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
+| `cd agent && npm ci && npm test` | 28 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
 | Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact owner command for **Approve** |
 
-The contract tests use `near-sdk` unit testing; wasm builds run in CI (`.github/workflows/ci.yml`) with `cargo near build`.
+The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workflows/ci.yml`) also builds the wasm with `cargo near build`.
 
 ### The scenarios the tests act out
 
@@ -66,22 +68,26 @@ The contract tests use `near-sdk` unit testing; wasm builds run in CI (`.github/
 | Send 4 shares when anything above 2 needs approval | `PENDING_APPROVAL`, ticket 1; signed only after the owner approves and the agent re-sends with a fresh observation |
 | Reuse that ticket, or use another agent's | `TicketInvalid` |
 | Keep sending after the owner pressed pause | `Paused` |
-| Replace a signed transaction with a different one at the same nonce | `InvalidReplacement` |
+| Replace a signed transaction with a different one at the same nonce, or fee-bump another agent's | `InvalidReplacement` |
+| Re-send an approved Stock Token request with a lower multiplier so more raw units move | `TicketInvalid` |
+| Send 6 ETH when the native cap is 5 | `AmountCapExceeded` (caps in wei) |
 
 ## Components
 
 | Path | What it is |
 |---|---|
 | `policy-signer/` | The NEAR contract (Rust, near-sdk 5.30). Policy, refusals, approval queue, EIP-1559 construction, MPC `sign` call and callback, owner controls, upgrades |
-| `mock-signer/` | A mock of the MPC `sign` method for sandbox tests. Its signatures do not recover and must never be broadcast |
+| `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
 | `dashboard/` | The owner console: one static page, no keys, no build |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
+| `ROADMAP.md` | What comes after the hackathon |
 
 ## Token kinds
 
 | Kind | Use for | Agent sends | Calldata | Caps counted in |
 |---|---|---|---|---|
+| `Native` | The chain's coin (ETH), registered under the zero address | wei | value transfer to the recipient, empty calldata | wei |
 | `Plain` | Any ERC-20 (stablecoins, governance tokens) | raw units | `transfer(to, raw)` | raw units |
 | `StockExact` | Stock Tokens, recommended | shares (18 decimals) | ShareExact `ExactTransfer.transferShares(token, to, shares, shortfall)`; the chain converts with the live multiplier | shares |
 | `StockDirect` | Stock Tokens where `ExactTransfer` is not deployed | shares | `transfer(to, raw)`, raw computed from the observed multiplier | raw units |
@@ -116,7 +122,7 @@ Where a refusal means the same condition as a ShareExact contract error, it has 
 
 ## Owner controls
 
-All owner methods require exactly 1 yoctoNEAR.
+All owner methods, and `accept_owner`, require exactly 1 yoctoNEAR. Setters follow `policy_delay_s`: at 0 they apply at once, above 0 they are scheduled and applied with `execute_change` after the delay (`cancel_change` drops one). Removals and pause are always immediate.
 
 | Method | Effect |
 |---|---|
@@ -124,13 +130,14 @@ All owner methods require exactly 1 yoctoNEAR.
 | `set_chain`, `set_token`, `set_recipient`, `set_params` | Allowlists, caps, soft limits and timing |
 | `approve_ticket`, `reject_ticket` | Decide queued requests |
 | `set_paused` | Stop new requests at once; callbacks in flight still settle |
-| `burn_nonce` | Sign a zero-value transaction at a nonce, voiding any signature issued for it |
-| `request_approve` | Sign the capped ERC-20 `approve` that `StockExact` needs |
+| `execute_change`, `cancel_change` | Apply or drop a scheduled policy change |
+| `burn_nonce` | Sign a zero-value transaction at a nonce, voiding any signature issued for it. Works while paused and may exceed the chain's fee caps, so it can outbid a transaction signed at the cap |
+| `request_approve` | Sign the ERC-20 `approve` that `StockExact` needs, for an amount the owner chooses |
 | `reset_nonce`, `clear_in_flight` | Recover from a transaction that was never mined or a callback that failed |
 | `propose_owner` / `accept_owner` | Two-step ownership transfer |
 | `propose_upgrade`, `apply_upgrade`, `cancel_upgrade`, `disable_upgrades` | Timelocked code upgrades, or none |
 
-Views: `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
+Views: `list_scheduled_changes`, `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
 
 ## Run it on NEAR testnet
 
@@ -151,7 +158,7 @@ The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"pa
 
 ## Relationship to ShareExact
 
-All code in this repository was written in the hackathon window, starting 2026-10-31, after the 2026-10-19 announcement. It builds on [ShareExact](https://github.com/shareexact/shareexact)'s `ExactTransfer` contract and SDK (MIT), which predate this hackathon and are not part of this entry: `StockExact` tokens call a deployed `ExactTransfer`, and no ShareExact code is copied here.
+All code in this repository was written in the hackathon window, starting 2026-10-31, after the 2026-10-19 announcement. It builds on [ShareExact](https://github.com/shareexact/shareexact), the same author's earlier project: its `ExactTransfer` contract and SDK (MIT) predate this hackathon and are not part of this entry: `StockExact` tokens call a deployed `ExactTransfer`, and no ShareExact code is copied here.
 
 ## Libraries
 
