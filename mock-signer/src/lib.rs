@@ -10,7 +10,7 @@
 //! point a deployed policy signer at this contract outside a sandbox.
 
 use near_sdk::serde_json::{json, Value};
-use near_sdk::{env, near, require, PanicOnDefault};
+use near_sdk::{env, near, require, AccountId, PanicOnDefault};
 
 #[near(serializers = [json])]
 #[derive(Clone, Debug)]
@@ -30,6 +30,7 @@ pub struct SignRequest {
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct MockSigner {
+    owner: AccountId,
     /// When set, every `sign` call panics, to exercise the failure callback.
     fail: bool,
     calls: u64,
@@ -40,6 +41,7 @@ impl MockSigner {
     #[init]
     pub fn new() -> Self {
         Self {
+            owner: env::predecessor_account_id(),
             fail: false,
             calls: 0,
         }
@@ -56,7 +58,8 @@ impl MockSigner {
             request.domain_id == 0,
             "mock supports secp256k1 (domain 0) only"
         );
-        let hash = request.payload_v2.ecdsa.trim_start_matches("0x");
+        // Like the real MPC contract, hex without a 0x prefix.
+        let hash = request.payload_v2.ecdsa.as_str();
         require!(
             hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()),
             "payload must be 32 bytes hex"
@@ -82,6 +85,10 @@ impl MockSigner {
     }
 
     pub fn set_fail(&mut self, fail: bool) {
+        require!(
+            env::predecessor_account_id() == self.owner,
+            "only the deployer"
+        );
         self.fail = fail;
     }
 
@@ -146,6 +153,15 @@ mod tests {
         let mut m = MockSigner::new();
         m.set_fail(true);
         m.sign(request());
+    }
+
+    #[test]
+    #[should_panic(expected = "payload must be 32 bytes hex")]
+    fn rejects_a_0x_prefix_like_the_real_signer() {
+        call(1);
+        let mut r = request();
+        r.payload_v2.ecdsa = format!("0x{}", r.payload_v2.ecdsa);
+        MockSigner::new().sign(r);
     }
 
     #[test]
