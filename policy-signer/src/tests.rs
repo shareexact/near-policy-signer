@@ -56,6 +56,7 @@ fn chain_policy(exact: Option<&str>) -> ChainPolicy {
         max_priority_fee_per_gas: U128(10_000_000),
         max_gas_limit: U128(200_000),
         exact_transfer: exact.map(Into::into),
+        unknown_recipients_need_approval: false,
     }
 }
 
@@ -750,6 +751,33 @@ fn only_the_same_agent_can_fee_bump() {
         Refusal::InvalidReplacement
     );
     accepted(&mut c, bump);
+}
+
+#[test]
+fn burn_fees_are_bounded() {
+    // A stolen owner key must not spend the derived address's ETH on fees
+    // through burns, which skip the policy delay.
+    let mut c = setup();
+    as_owner();
+    let fees = Fees {
+        evm_nonce: 0,
+        gas_limit: U128(21_000),
+        max_fee_per_gas: U128(300_000_001), // above 3x the 100_000_000 cap
+        max_priority_fee_per_gas: U128(1),
+    };
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.burn_nonce(CHAIN, fees)));
+    assert!(r.is_err());
+    as_owner();
+    let big_gas = Fees {
+        evm_nonce: 0,
+        gas_limit: U128(50_001),
+        max_fee_per_gas: U128(1),
+        max_priority_fee_per_gas: U128(1),
+    };
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        c.burn_nonce(CHAIN, big_gas)
+    }));
+    assert!(r.is_err());
 }
 
 #[test]
@@ -1463,4 +1491,75 @@ fn upgrade_delay_cannot_be_lowered() {
         upgrade_delay_s: 86_400,
         ..Params::default()
     });
+}
+
+/* --------------------- new recipients and look-alikes -------------------- */
+
+fn with_unknown_recipients_queued(c: &mut PolicySigner) {
+    as_owner();
+    c.set_chain(
+        CHAIN,
+        ChainPolicy {
+            unknown_recipients_need_approval: true,
+            ..chain_policy(Some(EXACT))
+        },
+    );
+}
+
+#[test]
+fn a_new_recipient_goes_to_the_queue_when_the_chain_allows_it() {
+    let mut c = setup();
+    with_unknown_recipients_queued(&mut c);
+    let mut r = req(WAD, 0);
+    r.recipient = STRANGER.into();
+    let id = queued(&mut c, r.clone());
+    assert_eq!(c.get_ticket(id).unwrap().recipient, STRANGER);
+    as_owner();
+    c.approve_ticket(id);
+    r.ticket_id = Some(id);
+    accepted(&mut c, r);
+    settle(&mut c, 1, true);
+    // A one-off approval: the recipient is still not allowlisted.
+    assert!(!c.is_recipient_allowed(CHAIN, STRANGER.into()));
+    let mut again = req(WAD, 1);
+    again.recipient = STRANGER.into();
+    queued(&mut c, again);
+}
+
+#[test]
+fn new_recipients_are_refused_by_default() {
+    let mut c = setup();
+    let mut r = req(WAD, 0);
+    r.recipient = STRANGER.into();
+    assert_eq!(refusal(&mut c, r), Refusal::RecipientNotAllowed);
+}
+
+#[test]
+fn a_lookalike_of_a_known_recipient_is_refused_even_with_the_queue_on() {
+    // Address poisoning: same first and last four hex digits as the
+    // allowlisted 0x0000...dead, different in the middle.
+    let mut c = setup();
+    with_unknown_recipients_queued(&mut c);
+    let mut r = req(WAD, 0);
+    r.recipient = "0x0000ffffffffffffffffffffffffffffffffdead".into();
+    assert_eq!(refusal(&mut c, r), Refusal::LookalikeRecipient);
+    assert!(get_logs().iter().any(|l| l.contains("LookalikeRecipient")));
+}
+
+#[test]
+fn recipient_list_tracks_allow_and_remove() {
+    let mut c = setup();
+    assert_eq!(c.list_recipients(CHAIN), vec![RECIPIENT.to_string()]);
+    as_owner();
+    c.set_recipient(CHAIN, STRANGER.into(), true);
+    as_owner();
+    c.set_recipient(CHAIN, STRANGER.into(), true); // no duplicate
+    assert_eq!(c.list_recipients(CHAIN).len(), 2);
+    as_owner();
+    c.set_recipient(CHAIN, RECIPIENT.into(), false);
+    assert_eq!(c.list_recipients(CHAIN), vec![STRANGER.to_string()]);
+    // Once removed, the old address no longer anchors look-alike checks.
+    let mut r = req(WAD, 0);
+    r.recipient = "0x0000ffffffffffffffffffffffffffffffffdead".into();
+    assert_eq!(refusal(&mut c, r), Refusal::RecipientNotAllowed);
 }

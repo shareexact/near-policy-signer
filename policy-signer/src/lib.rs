@@ -157,6 +157,13 @@ pub struct ScheduledChange {
 }
 
 pub const MAX_SCHEDULED_CHANGES: u32 = 50;
+pub const MAX_RECIPIENTS_PER_CHAIN: usize = 200;
+/// A burn may exceed the chain's fee caps to outbid a transaction signed at
+/// the cap, but by at most this factor, so an owner key cannot spend the
+/// derived address's balance on fees through burns.
+pub const BURN_FEE_FACTOR: u128 = 3;
+/// A zero-value transfer needs 21,000 gas; a little headroom, no more.
+pub const BURN_MAX_GAS_LIMIT: u128 = 50_000;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug)]
@@ -269,6 +276,8 @@ pub struct PolicySigner {
     chains: LookupMap<u64, ChainPolicy>,
     tokens: LookupMap<(u64, Address), TokenPolicy>,
     recipients: LookupMap<(u64, Address), bool>,
+    /// Allowlisted recipients per chain, kept as a list for the look-alike check.
+    recipient_lists: LookupMap<u64, Vec<Address>>,
     spend: LookupMap<(u64, Address), DaySpend>,
     nonces: LookupMap<u64, NonceState>,
     tickets: IterableMap<u64, Ticket>,
@@ -320,6 +329,7 @@ impl PolicySigner {
             chains: LookupMap::new(b"c"),
             tokens: LookupMap::new(b"t"),
             recipients: LookupMap::new(b"r"),
+            recipient_lists: LookupMap::new(b"l"),
             spend: LookupMap::new(b"s"),
             nonces: LookupMap::new(b"n"),
             tickets: IterableMap::new(b"i"),
@@ -643,8 +653,12 @@ impl PolicySigner {
                 recipient,
             });
         } else {
-            self.recipients
-                .remove(&(chain_id, parse_or_panic(&recipient)));
+            let addr = parse_or_panic(&recipient);
+            self.recipients.remove(&(chain_id, addr));
+            if let Some(mut list) = self.recipient_lists.get(&chain_id).cloned() {
+                list.retain(|a| *a != addr);
+                self.recipient_lists.insert(chain_id, list);
+            }
             emit(
                 "recipient_removed",
                 json!({ "chain_id": chain_id, "recipient": recipient }),
@@ -805,9 +819,9 @@ impl PolicySigner {
 
     /// Only for a callback that itself failed (for example, out of gas). An
     /// MPC error or timeout does not need this: the callback receives the
-    /// error and releases everything. Clearing releases nothing and does not
-    /// advance the nonce. If the MPC did sign, that signature is public in
-    /// its receipt; void it with `burn_nonce`.
+    /// error and records the request as possibly signed. Clearing releases
+    /// nothing and does not advance the nonce. If the MPC did sign, that
+    /// signature is public in its receipt; void it with `burn_nonce`.
     #[payable]
     pub fn clear_in_flight(&mut self, chain_id: u64) {
         self.assert_owner();
@@ -1014,6 +1028,13 @@ impl PolicySigner {
             .cloned()
     }
 
+    pub fn list_recipients(&self, chain_id: u64) -> Vec<String> {
+        self.recipient_lists
+            .get(&chain_id)
+            .map(|l| l.iter().map(evm::address_hex).collect())
+            .unwrap_or_default()
+    }
+
     pub fn is_recipient_allowed(&self, chain_id: u64, recipient: String) -> bool {
         self.recipients
             .contains_key(&(chain_id, parse_or_panic(&recipient)))
@@ -1217,10 +1238,34 @@ impl PolicySigner {
                 chain_id,
                 recipient,
             } => {
-                self.recipients
-                    .insert((chain_id, parse_or_panic(&recipient)), true);
+                let addr = parse_or_panic(&recipient);
+                if self.recipients.insert((chain_id, addr), true).is_none() {
+                    let mut list = self
+                        .recipient_lists
+                        .get(&chain_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    require!(
+                        list.len() < MAX_RECIPIENTS_PER_CHAIN,
+                        "too many recipients on this chain"
+                    );
+                    list.push(addr);
+                    self.recipient_lists.insert(chain_id, list);
+                }
             }
         }
+    }
+
+    /// Same first two and last two bytes (four hex digits each) as an
+    /// allowlisted recipient on this chain, but a different address.
+    fn is_lookalike(&self, chain_id: u64, r: &Address) -> bool {
+        self.recipient_lists
+            .get(&chain_id)
+            .map(|list| {
+                list.iter()
+                    .any(|a| a != r && a[..2] == r[..2] && a[18..] == r[18..])
+            })
+            .unwrap_or(false)
     }
 
     fn roll_day(&mut self, now_s: u64) {
@@ -1276,6 +1321,9 @@ impl PolicySigner {
             token: token.and_then(|t| self.tokens.get(&(chain_id, t))),
             recipient_allowed: recipient
                 .map(|r| self.recipients.contains_key(&(chain_id, r)))
+                .unwrap_or(false),
+            recipient_lookalike: recipient
+                .map(|r| self.is_lookalike(chain_id, &r))
                 .unwrap_or(false),
             spent_today: token
                 .and_then(|t| self.spend.get(&(chain_id, t)))
@@ -1386,6 +1434,16 @@ impl PolicySigner {
                 if fees.max_priority_fee_per_gas.0 > fees.max_fee_per_gas.0 || fees.gas_limit.0 == 0
                 {
                     Err(Refusal::InvalidFees)
+                } else if fees.max_fee_per_gas.0
+                    > chain.max_fee_per_gas.0.saturating_mul(BURN_FEE_FACTOR)
+                    || fees.max_priority_fee_per_gas.0
+                        > chain
+                            .max_priority_fee_per_gas
+                            .0
+                            .saturating_mul(BURN_FEE_FACTOR)
+                    || fees.gas_limit.0 > BURN_MAX_GAS_LIMIT
+                {
+                    Err(Refusal::GasCapExceeded)
                 } else {
                     Ok(())
                 }

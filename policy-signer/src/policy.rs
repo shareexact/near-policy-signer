@@ -22,6 +22,7 @@ pub enum Refusal {
     ChainNotAllowed,
     TokenNotAllowed,
     RecipientNotAllowed,
+    LookalikeRecipient,
     ExactTransferMissing,
     ObservationIncomplete,
     StaleObservation,
@@ -129,6 +130,12 @@ pub struct ChainPolicy {
     pub max_gas_limit: U128,
     /// ShareExact `ExactTransfer` on this chain. Required by `StockExact` tokens.
     pub exact_transfer: Option<String>,
+    /// When true, a transfer to a recipient that is not allowlisted goes to the
+    /// approval queue instead of being refused, so the agent can pay a new
+    /// counterparty once the owner approves. Look-alike addresses are still
+    /// refused outright.
+    #[serde(default)]
+    pub unknown_recipients_need_approval: bool,
 }
 
 #[near(serializers = [json, borsh])]
@@ -250,6 +257,9 @@ pub struct Context<'a> {
     pub chain: Option<&'a ChainPolicy>,
     pub token: Option<&'a TokenPolicy>,
     pub recipient_allowed: bool,
+    /// The recipient is not allowlisted but looks like an allowlisted address
+    /// (same first and last four hex digits): the address-poisoning pattern.
+    pub recipient_lookalike: bool,
     /// Spent today on this (chain, token), in the token's unit.
     pub spent_today: u128,
     /// The agent's own daily cap on this token, if the owner set one.
@@ -310,8 +320,17 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Decision, Refusa
     let token_policy = ctx.token.ok_or(Refusal::TokenNotAllowed)?;
     let token = evm::parse_address(&req.token).map_err(|_| Refusal::TokenNotAllowed)?;
     let recipient = evm::parse_address(&req.recipient).map_err(|_| Refusal::RecipientNotAllowed)?;
-    if !ctx.recipient_allowed {
-        return Err(Refusal::RecipientNotAllowed);
+    // An unknown recipient is refused, or, if the chain allows it, sent to the
+    // approval queue. A look-alike of a known recipient is always refused:
+    // address poisoning relies on a human skimming the first and last digits.
+    let unknown_recipient = !ctx.recipient_allowed;
+    if unknown_recipient {
+        if ctx.recipient_lookalike {
+            return Err(Refusal::LookalikeRecipient);
+        }
+        if !chain.unknown_recipients_need_approval {
+            return Err(Refusal::RecipientNotAllowed);
+        }
     }
     let kind = token_policy.kind;
     let exact_transfer = match kind {
@@ -392,13 +411,14 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Decision, Refusa
         }
     }
 
-    // Human approval for large amounts. A replacement was already approved
-    // when it was first signed.
+    // Human approval for large amounts and new recipients. A replacement was
+    // already approved when it was first signed.
     let mut ticket_id = None;
-    let needs_approval = token_policy
-        .approval_above
-        .map(|soft| cap_amount > soft.0)
-        .unwrap_or(false);
+    let needs_approval = unknown_recipient
+        || token_policy
+            .approval_above
+            .map(|soft| cap_amount > soft.0)
+            .unwrap_or(false);
     if needs_approval && !is_replacement {
         match req.ticket_id {
             None => return Ok(Decision::NeedsApproval { cap_amount }),

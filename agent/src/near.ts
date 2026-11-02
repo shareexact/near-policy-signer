@@ -62,13 +62,15 @@ export interface NearSettings {
   mpcContractId: string;
   path: string;
   requestGasTgas: number;
-  /** "ed25519:..." function-call key for `request`, from the environment. */
-  agentKey: string;
+  /** "ed25519:..." function-call key for `request`. Read-only use needs none. */
+  agentKey?: string;
 }
 
 export async function nearClient(s: NearSettings): Promise<PolicyClient> {
   const keyStore = new keyStores.InMemoryKeyStore();
-  await keyStore.setKey(s.networkId, s.agentAccountId, KeyPair.fromString(s.agentKey as `ed25519:${string}`));
+  if (s.agentKey) {
+    await keyStore.setKey(s.networkId, s.agentAccountId, KeyPair.fromString(s.agentKey as `ed25519:${string}`));
+  }
   const near = await connect({ networkId: s.networkId, nodeUrl: s.rpcUrl, keyStore });
   const account = await near.account(s.agentAccountId);
   const provider = near.connection.provider;
@@ -86,6 +88,7 @@ export async function nearClient(s: NearSettings): Promise<PolicyClient> {
         domain_id: 0,
       }),
     async request(req) {
+      if (!s.agentKey) throw new Error("NEAR_AGENT_KEY is not set; it is needed to send a request");
       const action = transactions.functionCall(
         "request",
         { request: req },

@@ -29,7 +29,7 @@ flowchart LR
 2. **Read.** For a Stock Token, the runtime reads `uiMultiplier`, `newUIMultiplier` and `effectiveAt` from one pinned block.
 3. **Request.** The agent calls `request` with the transfer, what it observed and the fees. It never supplies calldata or a hash.
 4. **Decide.** The contract checks the policy and returns one of: a named refusal, a ticket in the approval queue, or a signature request. Before calling the MPC network it reserves the nonce and the budget, so two requests can never spend the same budget.
-5. **Sign.** The MPC network signs the sighash of the transaction the contract built. The callback records the signature, or releases the reservation if signing failed.
+5. **Sign.** The MPC network signs the sighash of the transaction the contract built. The callback records the signature. If signing failed or timed out, it records the request as possibly signed, because a late signature can still appear: the budget stays counted and the nonce stays reserved for the identical call.
 6. **Verify and send.** The runtime checks that the payload hashes to the contract's sighash and that the signature recovers to the contract's derived address, then broadcasts, but only if the config allows broadcasting on that chain.
 
 ## What it guarantees
@@ -37,6 +37,8 @@ flowchart LR
 - The agent can only obtain signatures for transfers the contract built, to allowlisted tokens and recipients, within caps, with capped fees. Native coin and ERC-20 transfers on any EVM chain the owner allowlists; major mainnets can never be allowlisted on a testnet deployment.
 - **Caps cannot be shrunk by a false observation.** Every token has one kind and one budget, counted in the unit the signed calldata carries (see [Token kinds](#token-kinds)).
 - Amounts above a soft limit need the owner's approval: single-use, expiring tickets that never lift a hard cap.
+- **New counterparties without handing over control:** on chains where the owner turns it on, a transfer to a recipient that is not allowlisted goes to the approval queue instead of being refused. The approval is for that one transfer.
+- **Address-poisoning detection on chain:** a recipient that is not allowlisted but shares the first and last four hex digits with an allowlisted one is refused as `LookalikeRecipient`, and can never be queued or approved.
 - The owner can pause at once, and can void signatures already issued by burning their nonces.
 - Each agent has its own request limit and optional per-token daily cap, on top of the global caps.
 - A stolen owner key cannot loosen policy on the spot: with `policy_delay_s` set, every change that adds a recipient, raises a cap or adds an agent is announced and takes effect only after the delay. Removals and pause are always immediate.
@@ -50,7 +52,7 @@ What it does not protect against, and what the operator must do (delete the cont
 
 | Do | See |
 |---|---|
-| `cargo test` | `policy-signer` 88 passed, `mock-signer` 5 passed: every refusal, the approval queue, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
+| `cargo test` | `policy-signer` 93 passed, `mock-signer` 5 passed: every refusal, the approval queue, new recipients and look-alikes, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
 | `cd agent && npm ci && npm test` | 31 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
 | Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact near-cli command the owner signs to approve it |
@@ -62,7 +64,8 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | An agent tries to | The contract answers |
 |---|---|
 | Send 6 shares when the limit is 5, claiming a multiplier of 100 so the raw amount looks tiny | `AmountCapExceeded` (shares are what Exact mode puts on chain) |
-| Send to an address it made up | `RecipientNotAllowed` |
+| Send to an address it made up | `RecipientNotAllowed`, or, where the owner allows new recipients, a ticket the owner must approve |
+| Send to `0x0000ffff...dead`, crafted to look like the allowlisted `0x0000...dead` | `LookalikeRecipient`: never queued, never approvable |
 | Send while a split takes effect within two hours | `MultiplierChangePending` |
 | Send using an observation taken before a split that has since happened | `ObservationCrossedChange` |
 | Send 4 shares when anything above 2 needs approval | `PENDING_APPROVAL`, ticket 1; signed only after the owner approves and the agent re-sends with a fresh observation |
@@ -104,7 +107,8 @@ Where a refusal means the same condition as a ShareExact contract error, it has 
 | `AgentNotAllowed` | Caller is not a registered, enabled agent |
 | `RequestCapExceeded` | Global or per-agent daily request limit reached |
 | `RequestInFlight` | A request on this chain is waiting for the MPC network |
-| `ChainNotAllowed` / `TokenNotAllowed` / `RecipientNotAllowed` | Not allowlisted, or not a valid address |
+| `ChainNotAllowed` / `TokenNotAllowed` / `RecipientNotAllowed` | Not allowlisted, or not a valid address. An unknown recipient is queued instead when the chain has `unknown_recipients_need_approval` |
+| `LookalikeRecipient` | Not allowlisted, and the same first and last four hex digits as an allowlisted recipient on the chain: the address-poisoning pattern |
 | `ExactTransferMissing` | A `StockExact` token on a chain with no `ExactTransfer` configured |
 | `ObservationIncomplete` | Stock Token request without an observation, or with a missing field. Fails closed |
 | `StaleObservation` | Older than `max_observation_age_s` (120 s) or more than `max_clock_skew_s` (15 s) ahead of NEAR's clock |
@@ -131,13 +135,13 @@ All owner methods, and `accept_owner`, require exactly 1 yoctoNEAR. Setters foll
 | `approve_ticket`, `reject_ticket` | Decide queued requests |
 | `set_paused` | Stop new requests at once; callbacks in flight still settle |
 | `execute_change`, `cancel_change` | Apply or drop a scheduled policy change |
-| `burn_nonce` | Sign a zero-value transaction at a nonce, voiding any signature issued for it. Works while paused and may exceed the chain's fee caps, so it can outbid a transaction signed at the cap |
+| `burn_nonce` | Sign a zero-value transaction at a nonce, voiding any signature issued for it. Works while paused and may exceed the chain's fee caps by up to 3 times, so it can outbid a transaction signed at the cap |
 | `request_approve` | Sign the ERC-20 `approve` that `StockExact` needs, for an amount the owner chooses |
 | `reset_nonce`, `clear_in_flight` | Recover from a transaction that was never mined or a callback that failed |
 | `propose_owner` / `accept_owner` | Two-step ownership transfer |
 | `propose_upgrade`, `apply_upgrade`, `cancel_upgrade`, `disable_upgrades` | Timelocked code upgrades, or none |
 
-Views: `list_scheduled_changes`, `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
+Views: `list_recipients`, `list_scheduled_changes`, `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
 
 ## Run it on NEAR testnet
 

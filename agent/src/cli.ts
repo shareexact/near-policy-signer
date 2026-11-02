@@ -5,7 +5,7 @@
 //   policy-agent plan "send 3 MSHR to alice"
 //   policy-agent preview "send 3 MSHR to alice"
 //   policy-agent send "send 3 MSHR to alice" [--ticket <id>] [--broadcast]
-// Environment: AGENT_CONFIG (default ./agent.config.json), NEAR_AGENT_KEY,
+// Environment: AGENT_CONFIG (default ./agent.config.json), NEAR_AGENT_KEY (send only),
 // NEAR_AI_API_KEY (only with planner.provider = "near-ai").
 import { type Hex, createPublicClient, http } from "viem";
 import { Agent, type Chain } from "./agent.js";
@@ -17,9 +17,8 @@ import { nearAiPlanner, rulePlanner } from "./planner.js";
 async function main(argv: string[]) {
   const [command, text] = argv;
   const config = loadConfig(process.env.AGENT_CONFIG ?? "agent.config.json");
-  const agentKey = process.env.NEAR_AGENT_KEY;
-  if (!agentKey) throw new Error("NEAR_AGENT_KEY is not set");
-  const near = await nearClient({ ...config.near, agentKey });
+  // Only `send` needs the agent's key; address, status, plan and preview are read-only.
+  const near = await nearClient({ ...config.near, agentKey: process.env.NEAR_AGENT_KEY });
   const chains = (chainId: number): Chain => {
     const c = config.chains[String(chainId)];
     if (!c) throw new Error(`chain ${chainId} is not configured`);
