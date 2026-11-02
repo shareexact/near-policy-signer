@@ -20,6 +20,14 @@ describe("config", () => {
     dup.recipients.push({ ...dup.recipients[0]! });
     expect(() => parseConfig(dup)).toThrow(/duplicate recipient/);
   });
+  it("requires decimals for plain tokens and the zero address for native", () => {
+    const noDecimals = structuredClone(rawConfig) as typeof rawConfig & { tokens: { decimals?: number }[] };
+    delete noDecimals.tokens[1]!.decimals;
+    expect(() => parseConfig(noDecimals)).toThrow(/explicit decimals/);
+    const badNative = structuredClone(rawConfig);
+    badNative.tokens.push({ symbol: "ETH", chainId: 46630, address: rawConfig.tokens[1]!.address, kind: "Native" } as never);
+    expect(() => parseConfig(badNative)).toThrow(/zero address/);
+  });
   it("finds only configured tokens and recipients", () => {
     const c = parseConfig(rawConfig);
     expect(findToken(c, "mshr").kind).toBe("StockExact");

@@ -117,6 +117,26 @@ describe("Agent", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("refuses a signed transaction for another nonce", async () => {
+    const { chain, sent } = fakeChain();
+    const { client } = fakeNear((r) => signedOutcome({ ...r, fees: { ...r.fees, evm_nonce: r.fees.evm_nonce + 1 } }));
+    await expect(
+      new Agent(config, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true }),
+    ).rejects.toThrow(/not the request's/);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("sends native coin in wei without an observation", async () => {
+    const withEth = parseConfig({
+      ...rawConfig,
+      tokens: [...rawConfig.tokens, { symbol: "ETH", chainId: 46630, address: `0x${"0".repeat(40)}`, kind: "Native" }],
+    });
+    const { client } = fakeNear(async () => ({ status: "REFUSED", reason: "x" }));
+    const r = await new Agent(withEth, client, () => fakeChain().chain, rulePlanner).buildRequest("send 0.01 ETH to alice");
+    expect(r.amount).toBe("10000000000000000");
+    expect(r.observed).toBeNull();
+  });
+
   it("refuses to broadcast where the config does not allow it", async () => {
     const locked = parseConfig({ ...rawConfig, chains: { "46630": { rpcUrl: "https://x.example", allowBroadcast: false } } });
     const { chain, sent } = fakeChain();

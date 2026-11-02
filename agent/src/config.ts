@@ -5,7 +5,7 @@ import { z } from "zod";
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be 0x followed by 40 hex digits");
 const uint = z.string().regex(/^\d+$/, "must be a base-10 integer string");
 
-export const TokenKind = z.enum(["Plain", "StockExact", "StockDirect"]);
+export const TokenKind = z.enum(["Plain", "StockExact", "StockDirect", "Native"]);
 export type TokenKind = z.infer<typeof TokenKind>;
 
 export const ConfigSchema = z
@@ -38,8 +38,11 @@ export const ConfigSchema = z
           chainId: z.number().int(),
           address,
           kind: TokenKind,
-          /** Plain tokens: ERC-20 decimals. Stock Tokens always use 18-decimal shares. */
-          decimals: z.number().int().min(0).max(36).default(18),
+          /**
+           * Plain and Native: the token's decimals, required for Plain (USDC is 6,
+           * not 18). Stock Tokens always use 18-decimal shares.
+           */
+          decimals: z.number().int().min(0).max(36).optional(),
         }),
       )
       .min(1),
@@ -64,6 +67,13 @@ export const ConfigSchema = z
       if (symbols.has(key)) ctx.addIssue({ code: "custom", message: `duplicate token ${key}` });
       symbols.add(key);
       if (!c.chains[String(t.chainId)]) ctx.addIssue({ code: "custom", message: `token ${t.symbol} on unknown chain` });
+      if (t.kind === "Plain" && t.decimals === undefined) {
+        ctx.addIssue({ code: "custom", message: `token ${t.symbol}: Plain tokens need explicit decimals` });
+      }
+      const zero = /^0x0{40}$/.test(t.address);
+      if ((t.kind === "Native") !== zero) {
+        ctx.addIssue({ code: "custom", message: `token ${t.symbol}: Native uses the zero address, and only Native does` });
+      }
     }
     const labels = new Set<string>();
     for (const r of c.recipients) {

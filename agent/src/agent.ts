@@ -1,6 +1,6 @@
 // One end-to-end send: plan, read, preview, request, verify, and broadcast
 // only when asked to.
-import type { Hex } from "viem";
+import { type Hex, parseTransaction } from "viem";
 import { type Config } from "./config.js";
 import { type MpcSignature, type Observation, addressFromMpcKey, assemble } from "./evm.js";
 import type { Outcome, PolicyClient, Preview, TransferRequest } from "./near.js";
@@ -38,8 +38,8 @@ export class Agent {
   async buildRequest(instruction: string, ticketId?: number): Promise<TransferRequest> {
     const proposal = await this.planner.plan(instruction);
     const { token, recipient } = checkProposal(this.config, proposal);
-    const isStock = token.kind !== "Plain";
-    const amount = parseAmount(proposal.amount, isStock ? 18 : token.decimals);
+    const isStock = token.kind === "StockExact" || token.kind === "StockDirect";
+    const amount = parseAmount(proposal.amount, isStock ? 18 : (token.decimals ?? 18));
     const chain = this.chains(token.chainId);
     const observed = isStock ? await chain.readObservation(token.address as Hex) : null;
     const nonce = await this.near.view<{ next: number }>("get_nonce_state", { chain_id: token.chainId });
@@ -80,6 +80,12 @@ export class Agent {
       case "SIGNED": {
         const expected = await this.evmAddress();
         const a = await assemble(outcome.unsigned_tx, outcome.sighash, outcome.signature as MpcSignature, expected);
+        // The contract built the transaction; still check it is for the chain
+        // and nonce this agent asked for before it can be broadcast.
+        const tx = parseTransaction(a.signedTx);
+        if (tx.chainId !== req.chain_id || outcome.chain_id !== req.chain_id || tx.nonce !== req.fees.evm_nonce) {
+          throw new Error(`signed transaction is for chain ${tx.chainId} nonce ${tx.nonce}, not the request's`);
+        }
         let sent: Hex | null = null;
         if (opts.broadcast) {
           this.assertMayBroadcast(outcome.chain_id);
