@@ -51,9 +51,9 @@ What it does not protect against, and what the operator must do (delete the cont
 | Do | See |
 |---|---|
 | `cargo test` | `policy-signer` 88 passed, `mock-signer` 5 passed: every refusal, the approval queue, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
-| `cd agent && npm ci && npm test` | 28 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
+| `cd agent && npm ci && npm test` | 31 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
-| Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact owner command for **Approve** |
+| Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact near-cli command the owner signs to approve it |
 
 The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workflows/ci.yml`) also builds the wasm with `cargo near build`.
 
@@ -151,8 +151,8 @@ Nothing in this repository has been deployed yet. These are the steps, in order;
 5. As the owner (1 yoctoNEAR each): `add_agent`, `set_chain(46630, ...)`, `set_token(...)`, `set_recipient(...)`. Read the MPC contract's `config` view and call `set_sign_gas` if its sign gas requirement is above 50 Tgas.
 6. Give the agent account a function-call key for `request` on the contract, with a finite allowance (about 0.015 NEAR per request at 150 Tgas).
 7. Fund the contract with testnet NEAR for storage and 1 yoctoNEAR per signature.
-8. Find the contract's EVM address: `policy-agent address` calls the MPC contract's `derived_public_key` view with `{"path", "predecessor": <contract>, "domain_id": 0}` and converts the key. Fund it with Robinhood Chain testnet ETH.
-9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in, set `NEAR_AGENT_KEY`, and run `policy-agent preview "send 1 MSHR to alice"`, then `policy-agent send ... --broadcast` once broadcasting is enabled in the config.
+8. Find the contract's EVM address: `npm run cli -- address` (in `agent/`) calls the MPC contract's `derived_public_key` view with `{"path", "predecessor": <contract>, "domain_id": 0}` and converts the key. Fund it with Robinhood Chain testnet ETH.
+9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in (use an RPC endpoint from the NEAR docs' provider list; the public endpoints are rate limited), set `NEAR_AGENT_KEY`, and from `agent/` run `npm run cli -- preview "send 1 MSHR to alice"`, then `npm run cli -- send "send 1 MSHR to alice" --broadcast` once broadcasting is enabled in the config. Keep `requestGasTgas` at least the contract's sign gas plus 40; the agent checks this before sending.
 
 The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"path","domain_id":0}}`), the 1 yoctoNEAR deposit and the response shape match the `near/mpc` contract source. The live testnet configuration has not been checked yet.
 

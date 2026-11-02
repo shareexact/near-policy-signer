@@ -12,12 +12,13 @@ const KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 const contractKey = privateKeyToAccount(KEY);
 const mpcKey = `secp256k1:${bs58.encode(hexToBytes(contractKey.publicKey).slice(1))}`;
 
-function fakeNear(outcome: (r: TransferRequest) => Promise<Outcome>, preview: Partial<Preview> = {}) {
+function fakeNear(outcome: (r: TransferRequest) => Promise<Outcome>, preview: Partial<Preview> = {}, signGas = 50) {
   const calls: { method: string; args: unknown }[] = [];
   const client: PolicyClient = {
     async view<T>(method: string, args: object) {
       calls.push({ method, args });
       if (method === "get_nonce_state") return { next: 3 } as T;
+      if (method === "get_config") return { sign_gas_tgas: signGas } as T;
       if (method === "preview") return { decision: "SIGN", refusal: null, ...preview } as T;
       throw new Error(method);
     },
@@ -135,6 +136,18 @@ describe("Agent", () => {
     const r = await new Agent(withEth, client, () => fakeChain().chain, rulePlanner).buildRequest("send 0.01 ETH to alice");
     expect(r.amount).toBe("10000000000000000");
     expect(r.observed).toBeNull();
+  });
+
+  it("refuses to send when the request gas cannot cover the contract's sign gas", async () => {
+    let requested = false;
+    const { client } = fakeNear(async () => {
+      requested = true;
+      return { status: "REFUSED", reason: "x" };
+    }, {}, 120);
+    await expect(
+      new Agent(config, client, () => fakeChain().chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: false }),
+    ).rejects.toThrow(/below the contract's sign gas/);
+    expect(requested).toBe(false);
   });
 
   it("refuses to broadcast where the config does not allow it", async () => {

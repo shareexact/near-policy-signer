@@ -174,11 +174,14 @@ async function view(rpc, contract, method, args) {
   return JSON.parse(new TextDecoder().decode(new Uint8Array(body.result.result)));
 }
 
-// Owner actions are printed as commands for the owner to sign, never sent from here.
+// Owner actions are printed as near-cli (near-cli-rs) commands for the owner
+// to sign with their own key, never sent from here.
 function ownerCmd(method, args) {
   const contract = $("contract").value || "CONTRACT";
   const owner = $("owner").value || "OWNER";
-  return `near call ${contract} ${method} '${JSON.stringify(args)}' --accountId ${owner} --depositYocto 1 --gas 100000000000000`;
+  const network = contract.endsWith(".testnet") || !$("contract").value ? "testnet" : "mainnet";
+  return `near contract call-function as-transaction ${contract} ${method} json-args '${JSON.stringify(args)}' ` +
+    `prepaid-gas '100.0 Tgas' attached-deposit '1 yoctoNEAR' sign-as ${owner} network-config ${network} sign-with-keychain send`;
 }
 function show(id, text) { const n = $(id); n.textContent = text; n.hidden = false; navigator.clipboard?.writeText(text).catch(() => {}); }
 

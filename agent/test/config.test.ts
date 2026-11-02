@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findRecipient, findToken, parseConfig } from "../src/config.js";
+import { isTransient, lastResult } from "../src/near.js";
 import { rawConfig } from "./fixtures.js";
 
 describe("config", () => {
@@ -33,5 +34,20 @@ describe("config", () => {
     expect(findToken(c, "mshr").kind).toBe("StockExact");
     expect(() => findToken(c, "TSLA")).toThrow(/not in the agent config/);
     expect(() => findRecipient(c, "mallory", 46630)).toThrow(/not in the agent config/);
+  });
+});
+
+describe("near helpers", () => {
+  it("retries only waiting-type errors", () => {
+    expect(isTransient({ type: "TimeoutError", message: "timed out" })).toBe(true);
+    expect(isTransient(new Error("UNKNOWN_TRANSACTION"))).toBe(true);
+    expect(isTransient(new Error("InvalidNonce: tx nonce 5 must be larger than 7"))).toBe(false);
+    expect(isTransient(new Error("NotEnoughAllowance"))).toBe(false);
+  });
+  it("reads the final value and refuses unfinished or failed outcomes", () => {
+    const value = Buffer.from(JSON.stringify({ status: "REFUSED", reason: "Paused" })).toString("base64");
+    expect(lastResult({ status: { SuccessValue: value } })).toEqual({ status: "REFUSED", reason: "Paused" });
+    expect(() => lastResult({ status: "Started" })).toThrow(/not final/);
+    expect(() => lastResult({ status: { Failure: { x: 1 } } })).toThrow(/failed/);
   });
 });

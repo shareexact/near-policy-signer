@@ -65,6 +65,14 @@ export class Agent {
   }
 
   async send(instruction: string, opts: SendOptions): Promise<SendResult> {
+    // The MPC call needs the contract's sign gas, the 20 Tgas callback and the
+    // contract's own execution; too little fails closed but wastes allowance.
+    const cfg = await this.near.view<{ sign_gas_tgas: number }>("get_config", {});
+    if (this.config.near.requestGasTgas < cfg.sign_gas_tgas + 40) {
+      throw new Error(
+        `requestGasTgas ${this.config.near.requestGasTgas} is below the contract's sign gas ${cfg.sign_gas_tgas} + 40`,
+      );
+    }
     const req = await this.buildRequest(instruction, opts.ticketId);
     const preview = await this.preview(req);
     if (preview.decision === "REFUSED") return { kind: "refused", reason: preview.refusal ?? "unknown", stage: "preview" };

@@ -8,8 +8,8 @@ This document states what the policy signer protects against, what it does not, 
 2. **Delete every access key on the contract account after deployment.** The MPC network derives the signing key from the calling account and the path. Any key left on the contract account can call the MPC `sign` method directly, with any payload, and get a valid signature for the contract's EVM address without any policy check. List the account's keys afterwards: the list must be empty.
 3. **Never delete the contract account.** The derived EVM address depends only on the account id and the path. Whoever re-creates the name controls the address.
 4. **The path is fixed at initialization.** There is no setter, because changing it would change the EVM address.
-5. **Use a separate owner account, and keep its full-access key offline when you can.** Every owner method requires exactly 1 yoctoNEAR, so a function-call key on the owner account (for example a dapp login key) cannot change policy.
-6. **Give each agent account a function-call key restricted to `request` on the contract, with a finite allowance.** The allowance is charged for the gas attached to every call, refused calls included. At 150 Tgas and the minimum gas price, one request costs about 0.015 NEAR, so a 1 NEAR allowance covers about 65 requests.
+5. **Use a separate owner account, and keep its full-access key offline when you can.** Every owner method, and `accept_owner`, requires exactly 1 yoctoNEAR, so a function-call key on the owner account (for example a dapp login key) cannot change policy.
+6. **Give each agent account a function-call key restricted to `request` on the contract, with a finite allowance.** Each call needs the gas it attaches covered up front (about 0.015 NEAR at 150 Tgas and the minimum gas price), refused calls included; unused gas is refunded to the allowance. Keep the agent's `requestGasTgas` at least the contract's sign gas plus 40 Tgas, or requests fail for lack of gas.
 
 ## Threat model
 
@@ -54,7 +54,7 @@ Set `policy_delay_s` (for example 3600) once the policy is in place. From then o
 
 ## Upgrades
 
-The contract can replace its own code only through `propose_upgrade(code_hash)` then, at least `upgrade_delay_s` later (48 hours by default; it can be raised, never lowered), `apply_upgrade(code)` with code whose sha256 matches. Both steps are owner-only and emit events, so anyone monitoring the account sees an upgrade coming. `apply_upgrade` deploys the code and calls `migrate` in one receipt, announced as `upgrade_started`. If `migrate` fails, the deploy is reverted with it and the old code stays; propose again. This path works after all access keys are deleted. An owner who wants the code to be permanent calls `disable_upgrades`, which is irreversible.
+The contract can replace its own code only through `propose_upgrade(code_hash)` then, at least `upgrade_delay_s` later (48 hours by default; it can be raised, never lowered), `apply_upgrade(code)` with code whose sha256 matches. Both steps are owner-only and emit events, so anyone monitoring the account sees an upgrade coming. `apply_upgrade` deploys the code and calls `migrate` in one receipt, announced as `upgrade_started`. If `migrate` fails, the deploy is reverted with it and the old code stays; propose again and wait the delay again. Attach generous gas (for example 300 Tgas). The code travels base64-encoded in the transaction, so the wasm must stay under about 1.1 MB. This path works after all access keys are deleted. An owner who wants the code to be permanent calls `disable_upgrades`, which is irreversible.
 
 ## Reporting a vulnerability
 
