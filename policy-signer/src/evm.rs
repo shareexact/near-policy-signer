@@ -26,8 +26,10 @@ pub fn parse_address(s: &str) -> Result<Address, String> {
     let hex = s
         .strip_prefix("0x")
         .ok_or_else(|| format!("address {s} must start with 0x"))?;
-    if hex.len() != 40 {
-        return Err(format!("address {s} must have 40 hex digits"));
+    // Check every character before slicing: a multi-byte character would make
+    // the byte slicing below panic, and `from_str_radix` alone accepts a `+`.
+    if hex.len() != 40 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(format!("address {s} must be 0x followed by 40 hex digits"));
     }
     let mut out = [0u8; 20];
     for (i, byte) in out.iter_mut().enumerate() {
@@ -36,6 +38,11 @@ pub fn parse_address(s: &str) -> Result<Address, String> {
     }
     Ok(out)
 }
+
+/// Where a nonce burn sends its zero-value transaction.
+pub const BURN_ADDRESS: Address = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xde, 0xad,
+];
 
 pub fn address_hex(a: &Address) -> String {
     format!("0x{}", to_hex(a))
@@ -167,6 +174,15 @@ mod tests {
         assert!(parse_address("C9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E").is_err());
         assert!(parse_address("0x1234").is_err());
         assert!(parse_address("0xZZf9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E").is_err());
+        // Multi-byte characters and signs are refused, not panicked on.
+        let multibyte = format!("0x\u{e9}\u{e9}{}", "0".repeat(36));
+        assert_eq!(
+            multibyte.len(),
+            42,
+            "40 bytes after 0x, so only the char check stops it"
+        );
+        assert!(parse_address(&multibyte).is_err());
+        assert!(parse_address("0x+0+0+0+0+0+0+0+0+0+0+0+0+0+0+0+0+0+0+0f").is_err());
     }
 
     #[test]
