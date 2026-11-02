@@ -1,4 +1,4 @@
-//! Mock MPC signer (C7). Sandbox and unit tests only.
+//! Mock MPC signer. Sandbox and unit tests only.
 //!
 //! near-workspaces sandboxes have no MPC network, so the policy signer's
 //! full request, sign and callback path cannot run there against the real

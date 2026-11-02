@@ -59,6 +59,10 @@ pub enum TokenKind {
     /// the contract converts with the observed multiplier, and caps are raw
     /// units, because raw is what the calldata moves.
     StockDirect,
+    /// The chain's native coin (ETH on most EVM chains), registered under the
+    /// zero address. Amounts and caps are wei. The transaction sends `value`
+    /// to the recipient with empty calldata.
+    Native,
 }
 
 impl TokenKind {
@@ -66,11 +70,12 @@ impl TokenKind {
         match self {
             TokenKind::StockExact => "shares",
             TokenKind::Plain | TokenKind::StockDirect => "raw",
+            TokenKind::Native => "wei",
         }
     }
 
     pub fn is_stock(&self) -> bool {
-        !matches!(self, TokenKind::Plain)
+        matches!(self, TokenKind::StockExact | TokenKind::StockDirect)
     }
 }
 
@@ -164,13 +169,18 @@ pub struct Params {
     pub approved_ticket_ttl_s: u64,
     /// Open tickets kept at once. Bounds storage.
     pub max_open_tickets: u32,
-    /// Delay between proposing and applying a code upgrade, seconds.
+    /// Delay between proposing and applying a code upgrade, seconds. Can
+    /// only be raised.
     pub upgrade_delay_s: u64,
+    /// Delay before a policy change from a setter takes effect, seconds.
+    /// 0 applies changes at once. Removals and pause are always immediate.
+    pub policy_delay_s: u64,
 }
 
 pub const MIN_CORP_ACTION_WINDOW_S: u64 = 600;
 pub const MIN_UPGRADE_DELAY_S: u64 = 86_400;
 pub const MAX_OPEN_TICKETS_LIMIT: u32 = 100;
+pub const MAX_POLICY_DELAY_S: u64 = 30 * 86_400;
 
 impl Default for Params {
     fn default() -> Self {
@@ -183,6 +193,7 @@ impl Default for Params {
             approved_ticket_ttl_s: 900,
             max_open_tickets: 20,
             upgrade_delay_s: 172_800,
+            policy_delay_s: 0,
         }
     }
 }
@@ -193,7 +204,11 @@ impl Default for Params {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignedRecord {
     pub nonce: u64,
+    /// The agent that requested it; `None` for owner transactions. Only the
+    /// same agent may fee-bump it.
+    pub agent: Option<AccountId>,
     pub to: String,
+    pub value: U128,
     pub input_hash: String,
     pub max_fee_per_gas: U128,
     pub max_priority_fee_per_gas: U128,
@@ -216,6 +231,9 @@ pub struct Ticket {
     pub token: String,
     pub recipient: String,
     pub amount: U128,
+    /// The amount counted against caps when the ticket was queued, in the
+    /// token's unit. What the owner saw; a re-send may not exceed it.
+    pub cap_amount: U128,
     pub status: TicketStatus,
     pub created_at: u64,
     pub expires_at: u64,
@@ -330,27 +348,33 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Decision, Refusa
     };
     let cap_amount = match kind {
         TokenKind::StockExact => amount,
-        TokenKind::Plain | TokenKind::StockDirect => raw,
+        TokenKind::Plain | TokenKind::StockDirect | TokenKind::Native => raw,
     };
 
     // Fees and gas, so a compromised agent key cannot drain gas money.
     check_fees(&req.fees, chain)?;
 
     // Build the exact call now: the replacement rule compares it byte for byte.
-    let input = match exact_transfer {
-        Some(_) => evm::calldata_transfer_shares(&token, &recipient, amount, req.max_shortfall.0),
-        None => evm::calldata_transfer(&recipient, raw),
+    let (to, value, input) = match (kind, exact_transfer) {
+        (TokenKind::Native, _) => (recipient, amount, vec![]),
+        (_, Some(et)) => (
+            et,
+            0,
+            evm::calldata_transfer_shares(&token, &recipient, amount, req.max_shortfall.0),
+        ),
+        (_, None) => (token, 0, evm::calldata_transfer(&recipient, raw)),
     };
     let tx = TxFields {
         chain_id: req.chain_id,
         nonce: req.fees.evm_nonce,
-        to: exact_transfer.unwrap_or(token),
+        to,
+        value,
         input,
         gas_limit: req.fees.gas_limit.0,
         max_fee_per_gas: req.fees.max_fee_per_gas.0,
         max_priority_fee_per_gas: req.fees.max_priority_fee_per_gas.0,
     };
-    let is_replacement = check_nonce(&tx, ctx.next_nonce, ctx.last_signed)?;
+    let is_replacement = check_nonce(&tx, ctx.next_nonce, ctx.last_signed, Some(ctx.caller))?;
 
     // Caps, in the token's single unit. A replacement re-signs a transfer
     // already counted, so only the per-request cap applies to it.
@@ -387,7 +411,8 @@ pub fn evaluate(req: &TransferRequest, ctx: &Context) -> Result<Decision, Refusa
                     && t.chain_id == req.chain_id
                     && t.token == evm::address_hex(&token)
                     && t.recipient == evm::address_hex(&recipient)
-                    && t.amount.0 == amount;
+                    && t.amount.0 == amount
+                    && cap_amount <= t.cap_amount.0;
                 if !matches {
                     return Err(Refusal::TicketInvalid);
                 }
@@ -461,14 +486,17 @@ pub fn check_nonce(
     tx: &TxFields,
     next_nonce: u64,
     last: Option<&SignedRecord>,
+    caller: Option<&AccountId>,
 ) -> Result<bool, Refusal> {
     if tx.nonce == next_nonce {
         return Ok(false);
     }
     match last {
         Some(last) if last.nonce == tx.nonce => {
-            let same_call =
-                last.to == evm::address_hex(&tx.to) && last.input_hash == input_hash(&tx.input);
+            let same_call = last.agent.as_ref() == caller
+                && last.to == evm::address_hex(&tx.to)
+                && last.value.0 == tx.value
+                && last.input_hash == input_hash(&tx.input);
             let higher_fees = tx.max_fee_per_gas > last.max_fee_per_gas.0
                 && tx.max_priority_fee_per_gas > last.max_priority_fee_per_gas.0;
             if same_call && higher_fees {
@@ -485,10 +513,12 @@ pub fn input_hash(input: &[u8]) -> String {
     evm::to_hex(&near_sdk::env::keccak256(input))
 }
 
-pub fn record_of(tx: &TxFields) -> SignedRecord {
+pub fn record_of(tx: &TxFields, agent: Option<&AccountId>) -> SignedRecord {
     SignedRecord {
         nonce: tx.nonce,
+        agent: agent.cloned(),
         to: evm::address_hex(&tx.to),
+        value: U128(tx.value),
         input_hash: input_hash(&tx.input),
         max_fee_per_gas: U128(tx.max_fee_per_gas),
         max_priority_fee_per_gas: U128(tx.max_priority_fee_per_gas),

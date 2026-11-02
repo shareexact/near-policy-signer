@@ -34,11 +34,14 @@ use evm::{Address, TxFields};
 use policy::{
     check_fees, check_nonce, evaluate, record_of, AgentPolicy, ChainPolicy, Context, Decision,
     Fees, Params, Refusal, SignedRecord, Ticket, TicketStatus, TokenKind, TokenPolicy,
-    TransferRequest, MAX_OPEN_TICKETS_LIMIT, MIN_CORP_ACTION_WINDOW_S, MIN_UPGRADE_DELAY_S,
+    TransferRequest, MAX_OPEN_TICKETS_LIMIT, MAX_POLICY_DELAY_S, MIN_CORP_ACTION_WINDOW_S,
+    MIN_UPGRADE_DELAY_S,
 };
 
-/// Robinhood Chain mainnet. Never allowlisted on a testnet deployment.
-pub const MAINNET_CHAIN_IDS: [u64; 1] = [4663];
+/// Major EVM mainnets, never allowlisted on a testnet deployment: the testnet
+/// MPC key must not sign mainnet payloads. Ethereum, Optimism, BNB Chain,
+/// Gnosis, Polygon, Base, Arbitrum One, Avalanche C-Chain, Robinhood Chain.
+pub const MAINNET_CHAIN_IDS: [u64; 9] = [1, 10, 56, 100, 137, 8453, 42161, 43114, 4663];
 pub const STATE_VERSION: u32 = 1;
 const CALLBACK_GAS: Gas = Gas::from_tgas(20);
 const MIGRATE_GAS: Gas = Gas::from_tgas(30);
@@ -106,6 +109,54 @@ pub struct NonceState {
     pub last_signed: Option<SignedRecord>,
     pub in_flight: Option<InFlight>,
 }
+
+/// A policy change, applied at once or after `policy_delay_s`.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub enum PolicyChange {
+    SetAgent {
+        agent: AccountId,
+        policy: AgentPolicy,
+    },
+    SetAgentCap {
+        agent: AccountId,
+        chain_id: u64,
+        token: String,
+        max_per_day: Option<U128>,
+    },
+    SetParams {
+        params: Params,
+    },
+    SetSignGas {
+        tgas: u64,
+    },
+    SetSignDeposit {
+        yocto: U128,
+    },
+    SetChain {
+        chain_id: u64,
+        policy: ChainPolicy,
+    },
+    SetToken {
+        chain_id: u64,
+        token: String,
+        policy: TokenPolicy,
+    },
+    AllowRecipient {
+        chain_id: u64,
+        recipient: String,
+    },
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct ScheduledChange {
+    pub id: u64,
+    pub change: PolicyChange,
+    pub executable_at: u64,
+}
+
+pub const MAX_SCHEDULED_CHANGES: u32 = 50;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug)]
@@ -227,6 +278,8 @@ pub struct PolicySigner {
     next_request_id: u64,
     pending_upgrade: Option<PendingUpgrade>,
     upgrades_disabled: bool,
+    scheduled: IterableMap<u64, ScheduledChange>,
+    next_change_id: u64,
 }
 
 #[near]
@@ -276,6 +329,8 @@ impl PolicySigner {
             next_request_id: 1,
             pending_upgrade: None,
             upgrades_disabled: false,
+            scheduled: IterableMap::new(b"p"),
+            next_change_id: 1,
         }
     }
 
@@ -446,39 +501,29 @@ impl PolicySigner {
                 }
             }
             Err(_) => {
-                // Release everything reserved: the nonce was never signed and
-                // nothing left the address.
-                self.nonces.insert(chain_id, state);
-                if let Some(token) = flight
-                    .token
-                    .as_deref()
-                    .and_then(|t| evm::parse_address(t).ok())
-                {
-                    release(
-                        &mut self.spend,
-                        (chain_id, token),
-                        flight.day,
-                        flight.reserved.0,
-                    );
-                    if let FlightKind::Transfer { agent, ticket } = &flight.kind {
-                        release(
-                            &mut self.agent_spend,
-                            (agent.clone(), chain_id, token),
-                            flight.day,
-                            flight.reserved.0,
-                        );
-                        if let Some(t) = ticket {
-                            self.tickets.insert(t.id, t.clone());
-                        }
-                    }
+                // Treat a failed sign call as possibly signed. After a timeout
+                // the MPC nodes can still publish a valid signature in a late
+                // transaction, so the nonce is not freed for a different call
+                // and the budget is not released. The same requester can
+                // re-sign the identical call as a fee bump at no extra budget,
+                // or the owner can burn the nonce.
+                if !flight.is_replacement && flight.nonce >= state.next {
+                    state.next = flight.nonce + 1;
                 }
+                state.last_signed = Some(flight.record.clone());
+                self.nonces.insert(chain_id, state);
                 emit(
                     "sign_failed",
-                    json!({ "request_id": request_id, "chain_id": chain_id, "nonce": flight.nonce }),
+                    json!({
+                        "request_id": request_id,
+                        "chain_id": chain_id,
+                        "nonce": flight.nonce,
+                        "treated_as_possibly_signed": true,
+                    }),
                 );
                 Outcome::SignFailed {
                     request_id,
-                    error: "MPC sign call failed or timed out".into(),
+                    error: "MPC sign call failed or timed out; re-sign the identical call as a fee bump, or burn the nonce".into(),
                 }
             }
         }
@@ -488,15 +533,15 @@ impl PolicySigner {
     // Every owner method takes exactly 1 yoctoNEAR, so a function-call key on
     // the owner account (for example a dapp login key) cannot change policy.
 
+    // Policy setters. With `policy_delay_s` at 0 they apply at once. Above 0
+    // they are scheduled and take effect only through `execute_change` after
+    // the delay, so a stolen owner key cannot loosen policy on the spot.
+    // Removals and pause stay immediate: tightening never waits.
+
     #[payable]
     pub fn add_agent(&mut self, agent: AccountId, policy: AgentPolicy) {
         self.assert_owner();
-        require!(
-            agent != env::current_account_id() && agent != self.owner,
-            "an agent must be a separate account"
-        );
-        self.agents.insert(agent.clone(), policy.clone());
-        emit("agent_set", json!({ "agent": agent, "policy": policy }));
+        self.apply_or_schedule(PolicyChange::SetAgent { agent, policy });
     }
 
     #[payable]
@@ -517,17 +562,15 @@ impl PolicySigner {
         max_per_day: Option<U128>,
     ) {
         self.assert_owner();
-        let key = (agent, chain_id, parse_or_panic(&token));
-        match max_per_day {
-            Some(cap) => {
-                self.agent_caps.insert(key, cap);
-            }
-            None => {
-                self.agent_caps.remove(&key);
-            }
-        }
+        self.apply_or_schedule(PolicyChange::SetAgentCap {
+            agent,
+            chain_id,
+            token,
+            max_per_day,
+        });
     }
 
+    /// Pausing and resuming are immediate.
     #[payable]
     pub fn set_paused(&mut self, paused: bool) {
         self.assert_owner();
@@ -538,27 +581,7 @@ impl PolicySigner {
     #[payable]
     pub fn set_params(&mut self, params: Params) {
         self.assert_owner();
-        require!(
-            params.corp_action_window_s >= MIN_CORP_ACTION_WINDOW_S,
-            "corp_action_window_s below the 600 s floor"
-        );
-        require!(
-            params.max_observation_age_s > 0,
-            "max_observation_age_s must be positive"
-        );
-        require!(
-            params.upgrade_delay_s >= MIN_UPGRADE_DELAY_S,
-            "upgrade_delay_s below the 24 h floor"
-        );
-        require!(
-            params.max_open_tickets > 0 && params.max_open_tickets <= MAX_OPEN_TICKETS_LIMIT,
-            "max_open_tickets out of range"
-        );
-        require!(
-            params.approved_ticket_ttl_s > 0 && params.pending_ticket_ttl_s > 0,
-            "ticket lifetimes must be positive"
-        );
-        self.params = params;
+        self.apply_or_schedule(PolicyChange::SetParams { params });
     }
 
     /// Gas attached to the MPC `sign` call. Default 50 Tgas, range 15 to 200.
@@ -566,11 +589,7 @@ impl PolicySigner {
     #[payable]
     pub fn set_sign_gas(&mut self, tgas: u64) {
         self.assert_owner();
-        require!(
-            (MIN_SIGN_GAS_TGAS..=MAX_SIGN_GAS_TGAS).contains(&tgas),
-            "sign gas out of range"
-        );
-        self.sign_gas_tgas = tgas;
+        self.apply_or_schedule(PolicyChange::SetSignGas { tgas });
     }
 
     /// Deposit attached to each `sign` call. 1 yoctoNEAR today; the MPC
@@ -578,69 +597,83 @@ impl PolicySigner {
     #[payable]
     pub fn set_sign_deposit(&mut self, yocto: U128) {
         self.assert_owner();
-        require!(yocto.0 >= 1, "deposit must be at least 1 yoctoNEAR");
-        self.sign_deposit_yocto = yocto.0;
+        self.apply_or_schedule(PolicyChange::SetSignDeposit { yocto });
     }
 
     #[payable]
     pub fn set_chain(&mut self, chain_id: u64, policy: ChainPolicy) {
         self.assert_owner();
-        require!(
-            !(self.network == Network::Testnet && MAINNET_CHAIN_IDS.contains(&chain_id)),
-            "mainnet chain on a testnet signer"
-        );
-        if let Some(a) = &policy.exact_transfer {
-            require!(evm::parse_address(a).is_ok(), "bad exact_transfer address");
-        }
-        self.chains.insert(chain_id, policy);
+        self.apply_or_schedule(PolicyChange::SetChain { chain_id, policy });
     }
 
     #[payable]
     pub fn remove_chain(&mut self, chain_id: u64) {
         self.assert_owner();
         self.chains.remove(&chain_id);
+        emit("chain_removed", json!({ "chain_id": chain_id }));
     }
 
     #[payable]
     pub fn set_token(&mut self, chain_id: u64, token: String, policy: TokenPolicy) {
         self.assert_owner();
-        require!(
-            policy.max_per_request.0 <= policy.max_per_day.0,
-            "per-request cap above daily cap"
-        );
-        if let Some(soft) = policy.approval_above {
-            require!(
-                soft.0 < policy.max_per_request.0,
-                "approval_above must be below max_per_request"
-            );
-        }
-        if policy.kind == TokenKind::StockExact {
-            let has_exact = self
-                .chains
-                .get(&chain_id)
-                .and_then(|c| c.exact_transfer.as_ref())
-                .is_some();
-            require!(has_exact, "StockExact needs exact_transfer on the chain");
-        }
-        self.tokens
-            .insert((chain_id, parse_or_panic(&token)), policy);
+        self.apply_or_schedule(PolicyChange::SetToken {
+            chain_id,
+            token,
+            policy,
+        });
     }
 
     #[payable]
     pub fn remove_token(&mut self, chain_id: u64, token: String) {
         self.assert_owner();
         self.tokens.remove(&(chain_id, parse_or_panic(&token)));
+        emit(
+            "token_removed",
+            json!({ "chain_id": chain_id, "token": token }),
+        );
     }
 
+    /// Allowing a recipient follows `policy_delay_s`; removing one is immediate.
     #[payable]
     pub fn set_recipient(&mut self, chain_id: u64, recipient: String, allowed: bool) {
         self.assert_owner();
-        let key = (chain_id, parse_or_panic(&recipient));
         if allowed {
-            self.recipients.insert(key, true);
+            self.apply_or_schedule(PolicyChange::AllowRecipient {
+                chain_id,
+                recipient,
+            });
         } else {
-            self.recipients.remove(&key);
+            self.recipients
+                .remove(&(chain_id, parse_or_panic(&recipient)));
+            emit(
+                "recipient_removed",
+                json!({ "chain_id": chain_id, "recipient": recipient }),
+            );
         }
+    }
+
+    /// Apply a scheduled change once its delay has passed.
+    #[payable]
+    pub fn execute_change(&mut self, change_id: u64) {
+        self.assert_owner();
+        let executable_at = self
+            .scheduled
+            .get(&change_id)
+            .map(|c| c.executable_at)
+            .unwrap_or_else(|| env::panic_str("no such change"));
+        require!(now_s() >= executable_at, "change delay has not passed");
+        let scheduled = self.scheduled.remove(&change_id).expect("checked above");
+        self.apply_change(scheduled.change);
+    }
+
+    #[payable]
+    pub fn cancel_change(&mut self, change_id: u64) {
+        self.assert_owner();
+        let scheduled = self
+            .scheduled
+            .remove(&change_id)
+            .unwrap_or_else(|| env::panic_str("no such change"));
+        emit("change_cancelled", json!({ "change": scheduled }));
     }
 
     /// Approve a queued request. The agent then re-sends it with a fresh
@@ -657,7 +690,7 @@ impl PolicySigner {
         require!(t.status == TicketStatus::Pending, "ticket is not pending");
         require!(now < t.expires_at, "ticket expired");
         t.status = TicketStatus::Approved;
-        t.expires_at = now + self.params.approved_ticket_ttl_s;
+        t.expires_at = now.saturating_add(self.params.approved_ticket_ttl_s);
         self.tickets.insert(ticket_id, t.clone());
         emit("ticket_approved", json!({ "ticket": t }));
     }
@@ -709,6 +742,7 @@ impl PolicySigner {
             chain_id,
             nonce: fees.evm_nonce,
             to: token_addr,
+            value: 0,
             input: evm::calldata_approve(&spender, amount.0),
             gas_limit: fees.gas_limit.0,
             max_fee_per_gas: fees.max_fee_per_gas.0,
@@ -748,6 +782,7 @@ impl PolicySigner {
             chain_id,
             nonce: fees.evm_nonce,
             to: evm::BURN_ADDRESS,
+            value: 0,
             input: vec![],
             gas_limit: fees.gas_limit.0,
             max_fee_per_gas: fees.max_fee_per_gas.0,
@@ -765,6 +800,7 @@ impl PolicySigner {
         state.next = next;
         state.last_signed = None;
         self.nonces.insert(chain_id, state);
+        emit("nonce_reset", json!({ "chain_id": chain_id, "next": next }));
     }
 
     /// Only for a callback that itself failed (for example, out of gas). An
@@ -792,14 +828,21 @@ impl PolicySigner {
             new_owner != env::current_account_id() && !self.agents.contains_key(&new_owner),
             "owner must be a separate, non-agent account"
         );
+        emit("owner_proposed", json!({ "to": new_owner }));
         self.proposed_owner = Some(new_owner);
     }
 
+    #[payable]
     pub fn accept_owner(&mut self) {
+        assert_one_yocto();
         let caller = env::predecessor_account_id();
         require!(
             self.proposed_owner.as_ref() == Some(&caller),
             "not the proposed owner"
+        );
+        require!(
+            !self.agents.contains_key(&caller),
+            "an agent cannot become the owner"
         );
         let previous = std::mem::replace(&mut self.owner, caller.clone());
         self.proposed_owner = None;
@@ -820,7 +863,7 @@ impl PolicySigner {
         );
         let pending = PendingUpgrade {
             code_hash: hash,
-            executable_at: now_s() + self.params.upgrade_delay_s,
+            executable_at: now_s().saturating_add(self.params.upgrade_delay_s),
         };
         emit("upgrade_proposed", json!({ "upgrade": pending }));
         self.pending_upgrade = Some(pending);
@@ -858,7 +901,9 @@ impl PolicySigner {
             evm::to_hex(&env::sha256(&code.0)) == pending.code_hash,
             "code does not match the proposed hash"
         );
-        emit("upgrade_applied", json!({ "code_hash": pending.code_hash }));
+        // If `migrate` fails, the deploy in the same receipt is reverted too and
+        // the old code stays; the owner then proposes again.
+        emit("upgrade_started", json!({ "code_hash": pending.code_hash }));
         Promise::new(env::current_account_id())
             .deploy_contract(code.0)
             .function_call(
@@ -978,6 +1023,10 @@ impl PolicySigner {
         self.nonces.get(&chain_id).cloned().unwrap_or_default()
     }
 
+    pub fn list_scheduled_changes(&self) -> Vec<ScheduledChange> {
+        self.scheduled.values().cloned().collect()
+    }
+
     pub fn get_ticket(&self, ticket_id: u64) -> Option<Ticket> {
         self.tickets.get(&ticket_id).cloned()
     }
@@ -1010,6 +1059,168 @@ impl PolicySigner {
             env::predecessor_account_id() == self.owner,
             "only the owner may do this"
         );
+    }
+
+    fn apply_or_schedule(&mut self, change: PolicyChange) {
+        self.check_change(&change);
+        let delay = self.params.policy_delay_s;
+        if delay == 0 {
+            self.apply_change(change);
+            return;
+        }
+        require!(
+            self.scheduled.len() < MAX_SCHEDULED_CHANGES,
+            "too many scheduled changes"
+        );
+        let id = self.next_change_id;
+        self.next_change_id += 1;
+        let scheduled = ScheduledChange {
+            id,
+            change,
+            executable_at: now_s().saturating_add(delay),
+        };
+        emit("change_scheduled", json!({ "change": scheduled }));
+        self.scheduled.insert(id, scheduled);
+    }
+
+    /// Validation shared by scheduling and execution, so a change that was
+    /// valid when scheduled is checked again against the state it lands in.
+    fn check_change(&self, change: &PolicyChange) {
+        match change {
+            PolicyChange::SetAgent { agent, .. } => require!(
+                *agent != env::current_account_id() && *agent != self.owner,
+                "an agent must be a separate account"
+            ),
+            PolicyChange::SetAgentCap { token, .. } => {
+                parse_or_panic(token);
+            }
+            PolicyChange::SetParams { params } => {
+                require!(
+                    params.corp_action_window_s >= MIN_CORP_ACTION_WINDOW_S,
+                    "corp_action_window_s below the 600 s floor"
+                );
+                require!(
+                    params.max_observation_age_s > 0,
+                    "max_observation_age_s must be positive"
+                );
+                require!(
+                    params.upgrade_delay_s >= MIN_UPGRADE_DELAY_S,
+                    "upgrade_delay_s below the 24 h floor"
+                );
+                require!(
+                    params.upgrade_delay_s >= self.params.upgrade_delay_s,
+                    "upgrade_delay_s can only be raised"
+                );
+                require!(
+                    params.max_open_tickets > 0
+                        && params.max_open_tickets <= MAX_OPEN_TICKETS_LIMIT,
+                    "max_open_tickets out of range"
+                );
+                require!(
+                    params.approved_ticket_ttl_s > 0 && params.pending_ticket_ttl_s > 0,
+                    "ticket lifetimes must be positive"
+                );
+                require!(
+                    params.policy_delay_s <= MAX_POLICY_DELAY_S,
+                    "policy_delay_s above 30 days"
+                );
+            }
+            PolicyChange::SetSignGas { tgas } => require!(
+                (MIN_SIGN_GAS_TGAS..=MAX_SIGN_GAS_TGAS).contains(tgas),
+                "sign gas out of range"
+            ),
+            PolicyChange::SetSignDeposit { yocto } => {
+                require!(yocto.0 >= 1, "deposit must be at least 1 yoctoNEAR")
+            }
+            PolicyChange::SetChain { chain_id, policy } => {
+                require!(
+                    !(self.network == Network::Testnet && MAINNET_CHAIN_IDS.contains(chain_id)),
+                    "mainnet chain on a testnet signer"
+                );
+                if let Some(a) = &policy.exact_transfer {
+                    require!(evm::parse_address(a).is_ok(), "bad exact_transfer address");
+                }
+            }
+            PolicyChange::SetToken {
+                chain_id,
+                token,
+                policy,
+            } => {
+                require!(
+                    policy.max_per_request.0 <= policy.max_per_day.0,
+                    "per-request cap above daily cap"
+                );
+                if let Some(soft) = policy.approval_above {
+                    require!(
+                        soft.0 < policy.max_per_request.0,
+                        "approval_above must be below max_per_request"
+                    );
+                }
+                let token_addr = parse_or_panic(token);
+                require!(
+                    (policy.kind == TokenKind::Native) == (token_addr == evm::NATIVE),
+                    "Native uses the zero address, and only Native does"
+                );
+                if policy.kind == TokenKind::StockExact {
+                    let has_exact = self
+                        .chains
+                        .get(chain_id)
+                        .and_then(|c| c.exact_transfer.as_ref())
+                        .is_some();
+                    require!(has_exact, "StockExact needs exact_transfer on the chain");
+                }
+            }
+            PolicyChange::AllowRecipient { recipient, .. } => {
+                parse_or_panic(recipient);
+            }
+        }
+    }
+
+    fn apply_change(&mut self, change: PolicyChange) {
+        self.check_change(&change);
+        emit("policy_changed", json!({ "change": change }));
+        match change {
+            PolicyChange::SetAgent { agent, policy } => {
+                self.agents.insert(agent, policy);
+            }
+            PolicyChange::SetAgentCap {
+                agent,
+                chain_id,
+                token,
+                max_per_day,
+            } => {
+                let key = (agent, chain_id, parse_or_panic(&token));
+                match max_per_day {
+                    Some(cap) => {
+                        self.agent_caps.insert(key, cap);
+                    }
+                    None => {
+                        self.agent_caps.remove(&key);
+                    }
+                }
+            }
+            PolicyChange::SetParams { params } => self.params = params,
+            PolicyChange::SetSignGas { tgas } => self.sign_gas_tgas = tgas,
+            PolicyChange::SetSignDeposit { yocto } => self.sign_deposit_yocto = yocto.0,
+            PolicyChange::SetChain { chain_id, policy } => {
+                self.chains.insert(chain_id, policy);
+            }
+            PolicyChange::SetToken {
+                chain_id,
+                token,
+                policy,
+            } => {
+                self.tokens
+                    .insert((chain_id, parse_or_panic(&token)), policy);
+            }
+            PolicyChange::AllowRecipient {
+                chain_id,
+                recipient,
+            } => {
+                self.recipients
+                    .insert((chain_id, parse_or_panic(&recipient)), true);
+            }
+        }
     }
 
     fn roll_day(&mut self, now_s: u64) {
@@ -1140,9 +1351,10 @@ impl PolicySigner {
             token: evm::address_hex(&token.expect("checked by evaluate")),
             recipient: evm::address_hex(&recipient.expect("checked by evaluate")),
             amount: request.amount,
+            cap_amount: U128(cap_amount),
             status: TicketStatus::Pending,
             created_at: now_s,
-            expires_at: now_s + self.params.pending_ticket_ttl_s,
+            expires_at: now_s.saturating_add(self.params.pending_ticket_ttl_s),
         };
         emit(
             "escalated",
@@ -1167,7 +1379,20 @@ impl PolicySigner {
         kind: FlightKind,
         now_s: u64,
     ) -> PromiseOrValue<Outcome> {
-        if let Err(reason) = check_fees(fees, chain) {
+        let fee_check = match kind {
+            // A burn must be able to outbid a transaction signed at the cap,
+            // so only the fees' internal consistency is checked.
+            FlightKind::Burn => {
+                if fees.max_priority_fee_per_gas.0 > fees.max_fee_per_gas.0 || fees.gas_limit.0 == 0
+                {
+                    Err(Refusal::InvalidFees)
+                } else {
+                    Ok(())
+                }
+            }
+            _ => check_fees(fees, chain),
+        };
+        if let Err(reason) = fee_check {
             env::panic_str(&format!("{reason:?}"));
         }
         let state = self.nonces.get(&chain_id).cloned().unwrap_or_default();
@@ -1175,7 +1400,7 @@ impl PolicySigner {
         let is_replacement = match kind {
             // A burn may reuse any nonce up to `next`; that is its purpose.
             FlightKind::Burn => tx.nonce < state.next,
-            _ => check_nonce(&tx, state.next, state.last_signed.as_ref())
+            _ => check_nonce(&tx, state.next, state.last_signed.as_ref(), None)
                 .unwrap_or_else(|r| env::panic_str(&format!("{r:?}"))),
         };
         let detail = json!({ "owner_action": kind, "to": evm::address_hex(&tx.to) });
@@ -1236,7 +1461,7 @@ impl PolicySigner {
             reserved: U128(reserved),
             day,
             is_replacement,
-            record: record_of(&tx),
+            record: record_of(&tx, agent),
             unsigned_tx: format!("0x{}", evm::to_hex(&unsigned)),
             sighash: format!("0x{}", evm::to_hex(&sighash)),
             started_at: now_s,
@@ -1288,25 +1513,6 @@ fn reserve<K: near_sdk::borsh::BorshSerialize + Ord + Clone>(
             spent: prev.spent.saturating_add(amount),
         },
     );
-}
-
-fn release<K: near_sdk::borsh::BorshSerialize + Ord + Clone>(
-    map: &mut LookupMap<K, DaySpend>,
-    key: K,
-    day: u64,
-    amount: u128,
-) {
-    if let Some(s) = map.get(&key).cloned() {
-        if s.day == day {
-            map.insert(
-                key,
-                DaySpend {
-                    day,
-                    spent: s.spent.saturating_sub(amount),
-                },
-            );
-        }
-    }
 }
 
 /// Arguments for the MPC `sign` method: a secp256k1 payload (`domain_id` 0).

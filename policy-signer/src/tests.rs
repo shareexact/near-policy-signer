@@ -693,7 +693,7 @@ fn rejected_ticket_is_gone() {
 }
 
 #[test]
-fn ticket_restored_when_signing_fails() {
+fn after_a_failed_approved_send_the_retry_is_a_fee_bump() {
     let mut c = setup();
     with_approval_above(&mut c, 2 * WAD);
     let id = queued(&mut c, req(4 * WAD, 0));
@@ -703,8 +703,75 @@ fn ticket_restored_when_signing_fails() {
     r.ticket_id = Some(id);
     accepted(&mut c, r.clone());
     settle(&mut c, 1, false);
-    assert_eq!(c.get_ticket(id).unwrap().status, TicketStatus::Approved);
+    assert!(
+        c.get_ticket(id).is_none(),
+        "consumed; the retry needs no ticket"
+    );
+    r.ticket_id = None;
+    r.fees.max_fee_per_gas = U128(50_000_000);
+    r.fees.max_priority_fee_per_gas = U128(2_000_000);
     accepted(&mut c, r);
+}
+
+#[test]
+fn direct_ticket_cannot_be_reused_for_more_raw() {
+    // Audit M1: the owner approved 3 shares at multiplier 1.0 (3 raw). A
+    // re-send claiming multiplier 0.6 would move 5 raw: refused.
+    let mut c = setup();
+    as_owner();
+    c.set_token(
+        CHAIN,
+        DIRECT.into(),
+        token_policy(TokenKind::StockDirect, Some(2 * WAD)),
+    );
+    let id = queued(&mut c, req_for(DIRECT, 3 * WAD, 0));
+    assert_eq!(c.get_ticket(id).unwrap().cap_amount.0, 3 * WAD);
+    as_owner();
+    c.approve_ticket(id);
+    let mut r = req_for(DIRECT, 3 * WAD, 0);
+    r.ticket_id = Some(id);
+    r.observed = Some(obs(WAD * 6 / 10));
+    assert_eq!(refusal(&mut c, r.clone()), Refusal::TicketInvalid);
+    r.observed = Some(obs(WAD));
+    accepted(&mut c, r);
+}
+
+#[test]
+fn only_the_same_agent_can_fee_bump() {
+    // Audit L3.
+    let mut c = setup();
+    accepted(&mut c, req(WAD, 0));
+    settle(&mut c, 1, true);
+    let mut bump = req(WAD, 0);
+    bump.fees.max_fee_per_gas = U128(50_000_000);
+    bump.fees.max_priority_fee_per_gas = U128(2_000_000);
+    assert_eq!(
+        refusal_as(&mut c, AGENT2, bump.clone()),
+        Refusal::InvalidReplacement
+    );
+    accepted(&mut c, bump);
+}
+
+#[test]
+fn a_burn_can_outbid_a_transaction_signed_at_the_cap() {
+    // Audit L4.
+    let mut c = setup();
+    let mut r = req(WAD, 0);
+    r.fees.max_fee_per_gas = U128(100_000_000);
+    r.fees.max_priority_fee_per_gas = U128(10_000_000);
+    accepted(&mut c, r);
+    settle(&mut c, 1, true);
+    as_owner();
+    let fees = Fees {
+        evm_nonce: 0,
+        gas_limit: U128(21_000),
+        max_fee_per_gas: U128(150_000_000),
+        max_priority_fee_per_gas: U128(15_000_000),
+    };
+    assert!(matches!(
+        c.burn_nonce(CHAIN, fees),
+        PromiseOrValue::Promise(_)
+    ));
 }
 
 #[test]
@@ -850,7 +917,9 @@ fn success_advances_nonce_and_returns_the_signature() {
 }
 
 #[test]
-fn failure_releases_global_and_agent_budget() {
+fn a_failed_signature_is_treated_as_possibly_signed() {
+    // Audit M2: after an MPC timeout a late signature can still appear, so a
+    // failure neither frees the nonce nor releases the budget.
     let mut c = setup();
     as_owner();
     c.set_agent_cap(acct(AGENT), CHAIN, TOKEN.into(), Some(U128(5 * WAD)));
@@ -859,9 +928,20 @@ fn failure_releases_global_and_agent_budget() {
         settle(&mut c, 1, false),
         Outcome::SignFailed { .. }
     ));
-    assert_eq!(c.get_nonce_state(CHAIN).next, 0);
-    assert_eq!(c.get_spent_today(CHAIN, TOKEN.into()).0, 0);
-    accepted(&mut c, req(5 * WAD, 0));
+    assert_eq!(c.get_nonce_state(CHAIN).next, 1);
+    assert_eq!(c.get_spent_today(CHAIN, TOKEN.into()).0, 5 * WAD);
+    // A different call at the same nonce is refused.
+    let mut other = req(WAD, 0);
+    other.fees.max_fee_per_gas = U128(50_000_000);
+    other.fees.max_priority_fee_per_gas = U128(2_000_000);
+    assert_eq!(refusal(&mut c, other), Refusal::InvalidReplacement);
+    // The identical call can be re-signed as a fee bump, at no extra budget.
+    let mut bump = req(5 * WAD, 0);
+    bump.fees.max_fee_per_gas = U128(50_000_000);
+    bump.fees.max_priority_fee_per_gas = U128(2_000_000);
+    accepted(&mut c, bump);
+    settle(&mut c, 2, true);
+    assert_eq!(c.get_spent_today(CHAIN, TOKEN.into()).0, 5 * WAD);
 }
 
 #[test]
@@ -1058,7 +1138,7 @@ fn ownership_transfer_needs_acceptance() {
     let mut c = setup();
     as_owner();
     c.propose_owner(acct("new-owner.testnet"));
-    as_at("new-owner.testnet", NOW_S);
+    testing_env!(ctx("new-owner.testnet", NOW_S, 1).build());
     c.accept_owner();
     assert_eq!(c.get_config().owner, acct("new-owner.testnet"));
 }
@@ -1069,7 +1149,26 @@ fn only_proposed_owner_can_accept() {
     let mut c = setup();
     as_owner();
     c.propose_owner(acct("new-owner.testnet"));
-    as_at(AGENT, NOW_S);
+    testing_env!(ctx("someone.testnet", NOW_S, 1).build());
+    c.accept_owner();
+}
+
+#[test]
+#[should_panic(expected = "an agent cannot become the owner")]
+fn an_agent_cannot_accept_ownership() {
+    let mut c = setup();
+    as_owner();
+    c.propose_owner(acct("new-owner.testnet"));
+    as_owner();
+    c.add_agent(
+        acct("new-owner.testnet"),
+        AgentPolicy {
+            enabled: true,
+            label: "x".into(),
+            max_requests_per_day: 1,
+        },
+    );
+    testing_env!(ctx("new-owner.testnet", NOW_S, 1).build());
     c.accept_owner();
 }
 
@@ -1210,4 +1309,158 @@ fn preview_and_request_agree() {
         Some(Refusal::RecipientNotAllowed)
     );
     assert_eq!(refusal(&mut c, r), Refusal::RecipientNotAllowed);
+}
+
+/* ------------------------------ native coin ------------------------------ */
+
+const NATIVE_ADDR: &str = "0x0000000000000000000000000000000000000000";
+
+fn with_native(c: &mut PolicySigner) {
+    as_owner();
+    c.set_token(
+        CHAIN,
+        NATIVE_ADDR.into(),
+        token_policy(TokenKind::Native, None),
+    );
+}
+
+#[test]
+fn native_transfer_sends_value_with_empty_calldata() {
+    let mut c = setup();
+    with_native(&mut c);
+    let mut r = req_for(NATIVE_ADDR, WAD / 100, 0);
+    r.observed = None;
+    as_agent();
+    let p = c.preview(acct(AGENT), r.clone());
+    assert_eq!(p.decision, "SIGN");
+    assert_eq!(p.to.as_deref(), Some(RECIPIENT));
+    assert_eq!(p.calldata.as_deref(), Some("0x"));
+    assert_eq!(p.cap_unit.as_deref(), Some("wei"));
+    accepted(&mut c, r);
+    let flight = c.get_nonce_state(CHAIN).in_flight.unwrap();
+    assert_eq!(flight.record.value.0, WAD / 100);
+}
+
+#[test]
+fn native_caps_are_in_wei_and_value_is_part_of_the_replacement_rule() {
+    let mut c = setup();
+    with_native(&mut c);
+    let mut r = req_for(NATIVE_ADDR, 6 * WAD, 0);
+    r.observed = None;
+    assert_eq!(refusal(&mut c, r), Refusal::AmountCapExceeded);
+    let mut r = req_for(NATIVE_ADDR, WAD, 0);
+    r.observed = None;
+    accepted(&mut c, r.clone());
+    settle(&mut c, 1, true);
+    r.amount = U128(2 * WAD);
+    r.fees.max_fee_per_gas = U128(50_000_000);
+    r.fees.max_priority_fee_per_gas = U128(2_000_000);
+    assert_eq!(refusal(&mut c, r), Refusal::InvalidReplacement);
+}
+
+#[test]
+#[should_panic(expected = "Native uses the zero address, and only Native does")]
+fn native_kind_needs_the_zero_address() {
+    let mut c = setup();
+    as_owner();
+    c.set_token(
+        CHAIN,
+        STRANGER.into(),
+        token_policy(TokenKind::Native, None),
+    );
+}
+
+#[test]
+#[should_panic(expected = "mainnet chain on a testnet signer")]
+fn base_mainnet_is_blocked_on_testnet_too() {
+    let mut c = setup();
+    as_owner();
+    c.set_chain(8453, chain_policy(None));
+}
+
+/* ---------------------------- policy delay ------------------------------- */
+
+fn with_policy_delay(c: &mut PolicySigner, delay: u64) {
+    as_owner();
+    c.set_params(Params {
+        policy_delay_s: delay,
+        ..Params::default()
+    });
+}
+
+#[test]
+fn loosening_waits_for_the_policy_delay() {
+    let mut c = setup();
+    with_policy_delay(&mut c, 3_600);
+    as_owner();
+    c.set_recipient(CHAIN, STRANGER.into(), true);
+    assert!(!c.is_recipient_allowed(CHAIN, STRANGER.into()), "not yet");
+    let id = c.list_scheduled_changes()[0].id;
+    assert!(get_logs().iter().any(|l| l.contains("change_scheduled")));
+
+    as_owner();
+    let early = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.execute_change(id)));
+    assert!(early.is_err());
+
+    as_owner_at(NOW_S + 3_600);
+    c.execute_change(id);
+    assert!(c.is_recipient_allowed(CHAIN, STRANGER.into()));
+    assert!(get_logs().iter().any(|l| l.contains("policy_changed")));
+}
+
+#[test]
+fn tightening_is_immediate_even_with_a_delay() {
+    let mut c = setup();
+    with_policy_delay(&mut c, 3_600);
+    as_owner();
+    c.set_recipient(CHAIN, RECIPIENT.into(), false);
+    assert!(!c.is_recipient_allowed(CHAIN, RECIPIENT.into()));
+    as_owner();
+    c.remove_agent(acct(AGENT2));
+    assert!(c.get_agent(acct(AGENT2)).is_none());
+    as_owner();
+    c.set_paused(true);
+    assert!(c.get_config().paused);
+}
+
+#[test]
+fn a_scheduled_change_can_be_cancelled_and_the_delay_itself_waits() {
+    let mut c = setup();
+    with_policy_delay(&mut c, 3_600);
+    // Lowering the delay to zero is itself a scheduled change.
+    with_policy_delay(&mut c, 0);
+    assert_eq!(c.get_config().params.policy_delay_s, 3_600);
+    let id = c.list_scheduled_changes()[0].id;
+    as_owner();
+    c.cancel_change(id);
+    assert!(c.list_scheduled_changes().is_empty());
+}
+
+#[test]
+fn every_policy_setter_emits_an_event() {
+    let mut c = setup();
+    let count = |name: &str| get_logs().iter().filter(|l| l.contains(name)).count();
+    as_owner();
+    c.set_chain(CHAIN, chain_policy(Some(EXACT)));
+    assert_eq!(count("policy_changed"), 1);
+    as_owner();
+    c.set_sign_gas(60);
+    assert_eq!(count("policy_changed"), 1);
+    as_owner();
+    c.remove_token(CHAIN, PLAIN.into());
+    assert_eq!(count("token_removed"), 1);
+    as_owner();
+    c.reset_nonce(CHAIN, 3);
+    assert_eq!(count("nonce_reset"), 1);
+}
+
+#[test]
+#[should_panic(expected = "upgrade_delay_s can only be raised")]
+fn upgrade_delay_cannot_be_lowered() {
+    let mut c = setup();
+    as_owner();
+    c.set_params(Params {
+        upgrade_delay_s: 86_400,
+        ..Params::default()
+    });
 }

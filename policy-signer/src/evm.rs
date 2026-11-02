@@ -1,4 +1,4 @@
-//! EVM transaction construction. C1 builds every byte it signs; callers never
+//! EVM transaction construction. The contract builds every byte it signs; callers never
 //! supply calldata or a hash.
 
 use near_sdk::env;
@@ -20,7 +20,7 @@ const fn selector_transfer_shares() -> [u8; 4] {
 }
 
 /// Parse a `0x`-prefixed, 40-hex-digit address. Mixed case is accepted; the
-/// EIP-55 checksum is not enforced because C2 and the owner both pass
+/// EIP-55 checksum is not enforced because the agent runtime and the owner both pass
 /// lowercase, and a checksum mismatch is not a policy question.
 pub fn parse_address(s: &str) -> Result<Address, String> {
     let hex = s
@@ -38,6 +38,9 @@ pub fn parse_address(s: &str) -> Result<Address, String> {
     }
     Ok(out)
 }
+
+/// The token address that stands for a chain's native coin (`Native` kind).
+pub const NATIVE: Address = [0u8; 20];
 
 /// Where a nonce burn sends its zero-value transaction.
 pub const BURN_ADDRESS: Address = [
@@ -107,13 +110,15 @@ pub fn calldata_transfer_shares(
     )
 }
 
-/// The fields C1 signs, in one place, so the payload signed is provably the
-/// payload checked.
+/// The fields the contract signs, in one place, so the payload signed is
+/// provably the payload checked.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TxFields {
     pub chain_id: u64,
     pub nonce: u64,
     pub to: Address,
+    /// Wei. Non-zero only for a `Native` transfer.
+    pub value: u128,
     pub input: Vec<u8>,
     pub gas_limit: u128,
     pub max_fee_per_gas: u128,
@@ -121,14 +126,13 @@ pub struct TxFields {
 }
 
 impl TxFields {
-    /// EIP-1559 (type 2) signing payload: `0x02 || rlp([...])`. Value is always 0:
-    /// C1 never moves native ETH.
+    /// EIP-1559 (type 2) signing payload: `0x02 || rlp([...])`.
     pub fn unsigned_bytes(&self) -> Vec<u8> {
         EVMTransaction {
             chain_id: self.chain_id,
             nonce: self.nonce,
             to: Some(self.to),
-            value: 0,
+            value: self.value,
             input: self.input.clone(),
             gas_limit: self.gas_limit,
             max_fee_per_gas: self.max_fee_per_gas,
