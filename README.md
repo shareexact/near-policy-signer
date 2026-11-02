@@ -22,7 +22,7 @@ flowchart LR
   M -->|signature| C
   C -->|unsigned tx + signature| A
   A -->|checks sighash and signer,<br/>then broadcasts| E[EVM chain<br/>Robinhood Chain]
-  O[Owner console] -.->|reads views| C
+  O[Owner console] -.->|reads views; owner actions<br/>signed in the owner's wallet| C
 ```
 
 1. **Plan.** The planner turns plain text into `{token, recipient, amount}`. Its output is untrusted: it is checked against the agent's config, and the contract enforces everything again.
@@ -55,7 +55,7 @@ What it does not protect against, and what the operator must do (delete the cont
 | `cargo test` | `policy-signer` 93 passed, `mock-signer` 5 passed: every refusal, the approval queue, new recipients and look-alikes, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
 | `cd agent && npm ci && npm test` | 31 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
-| Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact near-cli command the owner signs to approve it |
+| `cd dashboard && npm ci && npm run dev`, open the printed address, click **Demo data** | Today's budget per token, a queued 4-share request, a scheduled policy change, and the exact near-cli command the owner signs to approve it. With a deployed testnet contract, **Connect wallet (testnet)** lets the owner approve, reject, pause, burn and execute scheduled changes from a NEAR wallet (MyNearWallet, Meteor or HERE) |
 
 The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workflows/ci.yml`) also builds the wasm with `cargo near build`.
 
@@ -82,7 +82,7 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | `policy-signer/` | The NEAR contract (Rust, near-sdk 5.30). Policy, refusals, approval queue, EIP-1559 construction, MPC `sign` call and callback, owner controls, upgrades |
 | `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
-| `dashboard/` | The owner console: one static page, no keys, no build |
+| `dashboard/` | The owner console (Vite, NEAR Wallet Selector): reads the contract's views; owner actions are signed in the owner's own wallet, testnet only, or shown as near-cli commands. The page holds no key |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
 | `ROADMAP.md` | What comes after the hackathon |
 

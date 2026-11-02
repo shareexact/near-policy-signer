@@ -1,0 +1,24 @@
+{
+  "name": "policy-signer-console",
+  "version": "0.1.0",
+  "description": "Owner console for the NEAR policy signer. Reads views over RPC; owner actions go through a NEAR wallet (testnet) or as near-cli commands.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@near-wallet-selector/core": "8.10.2",
+    "@near-wallet-selector/here-wallet": "8.10.2",
+    "@near-wallet-selector/meteor-wallet": "8.10.2",
+    "@near-wallet-selector/modal-ui": "8.10.2",
+    "@near-wallet-selector/my-near-wallet": "8.10.2",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "vite": "5.4.11"
+  }
+}

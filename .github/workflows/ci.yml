@@ -18,6 +18,8 @@ jobs:
         run: cargo clippy --locked --tests -- -D warnings
       - name: Unit tests
         run: cargo test --locked
+      - name: System libraries for cargo-near
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
       - name: Install cargo-near (pinned)
         run: cargo install cargo-near --version 0.22.0 --locked
       - name: Build wasm
@@ -46,3 +48,18 @@ jobs:
           npm run -s vectors > /tmp/vectors.json
           grep -q d6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62 /tmp/vectors.json
           grep -q 2af050832cd51552e2244b0c10632b31e83b5d5f1bd148d9cfd57172798a8f87 /tmp/vectors.json
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run build

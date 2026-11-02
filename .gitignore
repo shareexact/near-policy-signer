@@ -16,3 +16,6 @@ result.json
 node_modules/
 agent/dist/
 agent/agent.config.json
+
+# Console
+dashboard/dist/
