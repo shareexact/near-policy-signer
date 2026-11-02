@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy Signer Console</title>
+<meta name="description" content="Owner console for the NEAR policy signer: budgets, approval queue, pause and nonce burn.">
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d9;
+    --accent: #2f5d50; --accent-ink: #ffffff; --warn: #9a5b00; --warn-bg: #fff4e0;
+    --bad: #a12a2a; --bad-bg: #fbeaea; --ok: #2f6b3a; --ok-bg: #e9f4ea; --bar: #d8d5ca;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141513; --panel: #1c1d1a; --ink: #ecebe6; --muted: #9a998f; --line: #2d2e2a;
+      --accent: #7fb8a4; --accent-ink: #10201b; --warn: #f0b45a; --warn-bg: #2e2412;
+      --bad: #f08a8a; --bad-bg: #2d1717; --ok: #8fd19b; --ok-bg: #16261a; --bar: #34362f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141513; --panel: #1c1d1a; --ink: #ecebe6; --muted: #9a998f; --line: #2d2e2a;
+    --accent: #7fb8a4; --accent-ink: #10201b; --warn: #f0b45a; --warn-bg: #2e2412;
+    --bad: #f08a8a; --bad-bg: #2d1717; --ok: #8fd19b; --ok-bg: #16261a; --bar: #34362f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 32px 0 12px; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .badge.bad { background: var(--bad-bg); color: var(--bad); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  form.connect { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); align-items: end; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  input, select { font: 14px var(--mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); min-width: 0; }
+  button { font: 600 14px var(--sans); padding: 9px 14px; border-radius: 6px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); }
+  button.danger { border-color: var(--bad); background: transparent; color: var(--bad); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .stat { display: grid; gap: 2px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px 40px; }
+  .stat b { font: 600 22px var(--sans); }
+  .bar { height: 8px; background: var(--bar); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+  .bar span { display: block; height: 100%; background: var(--accent); }
+  .bar span.hot { background: var(--warn); }
+  .bar span.full { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  td.mono, .mono { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  .table-scroll { overflow-x: auto; }
+  pre.cmd { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin: 8px 0 0;
+    font: 12.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .note { font-size: 13px; color: var(--muted); }
+  .error { color: var(--bad); font-size: 14px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 14px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Policy Signer Console</h1>
+      <div class="sub">An agent spends inside the limits you set. Nothing here holds a key.</div>
+    </div>
+    <div class="row" id="badges"></div>
+  </header>
+
+  <h2>Contract</h2>
+  <div class="panel">
+    <form class="connect" id="connect">
+      <label>NEAR RPC <input id="rpc" value="https://rpc.testnet.near.org" autocomplete="off"></label>
+      <label>Contract account <input id="contract" placeholder="policy.example.testnet" autocomplete="off"></label>
+      <label>Owner account <input id="owner" placeholder="owner.example.testnet" autocomplete="off"></label>
+      <label>Chain id <input id="chain" value="46630" inputmode="numeric"></label>
+      <label>Tokens (SYMBOL:0xaddress:decimals, comma separated)
+        <input id="tokens" placeholder="MSHR:0xabc...:18" autocomplete="off"></label>
+      <div class="row">
+        <button type="submit">Load</button>
+        <button type="button" class="ghost" id="demo">Demo data</button>
+      </div>
+    </form>
+    <p class="error" id="error" hidden></p>
+  </div>
+
+  <div id="view" hidden>
+    <h2>Budgets today</h2>
+    <div class="grid" id="budgets"></div>
+
+    <h2>Approval queue</h2>
+    <div class="panel">
+      <div class="table-scroll"><table>
+        <thead><tr><th>Ticket</th><th>Agent</th><th>Token</th><th>Amount</th><th>Recipient</th><th>Status</th><th></th></tr></thead>
+        <tbody id="tickets"></tbody>
+      </table></div>
+      <pre class="cmd" id="ticket-cmd" hidden></pre>
+    </div>
+
+    <h2>Signing</h2>
+    <div class="grid">
+      <div class="panel">
+        <dl class="kv" id="signing"></dl>
+      </div>
+      <div class="panel">
+        <div class="row">
+          <button type="button" class="danger" id="pause"></button>
+          <button type="button" class="ghost" id="burn">Burn a nonce</button>
+        </div>
+        <p class="note">Pause stops new requests at once. A burn signs a zero-value transaction at a nonce you choose, which voids any signature already issued for it. Burn every nonce from the chain's current one up to the next fresh one to void them all.</p>
+        <pre class="cmd" id="safety-cmd" hidden></pre>
+      </div>
+    </div>
+
+    <h2>Configuration</h2>
+    <div class="panel"><dl class="kv" id="config"></dl></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const DEMO = {
+  config: { version: 1, owner: "owner.example.testnet", signer: "v1.signer-prod.testnet", path: "robinhood-46630-1",
+    network: "Testnet", paused: false, sign_gas_tgas: 50, sign_deposit_yocto: "1", requests_today: 7,
+    pending_upgrade: null, params: { max_requests_per_day: 50, corp_action_window_s: 7200, max_observation_age_s: 120,
+      approved_ticket_ttl_s: 900, upgrade_delay_s: 172800 } },
+  tokens: [
+    { symbol: "MSHR", address: "0x00000000000000000000000000000000000000aa", decimals: 18,
+      status: { paused: false, next_nonce: 12, last_signed_nonce: 11, in_flight: null, cap_unit: "shares",
+        spent_today: "6000000000000000000", remaining_today: "4000000000000000000", requests_today: 7, max_requests_per_day: 50,
+        open_tickets: 1, token: { kind: "StockExact", max_per_request: "5000000000000000000", max_per_day: "10000000000000000000", approval_above: "2000000000000000000" } } },
+    { symbol: "USDT", address: "0x00000000000000000000000000000000000000bb", decimals: 6,
+      status: { paused: false, next_nonce: 12, last_signed_nonce: 11, in_flight: { request_id: 31, nonce: 12, kind: "transfer", age_s: 4 },
+        cap_unit: "raw", spent_today: "940000000", remaining_today: "60000000", requests_today: 7, max_requests_per_day: 50, open_tickets: 1,
+        token: { kind: "Plain", max_per_request: "250000000", max_per_day: "1000000000", approval_above: null } } },
+  ],
+  tickets: [
+    { id: 4, agent: "rebalancer.example.testnet", chain_id: 46630, token: "0x00000000000000000000000000000000000000aa",
+      recipient: "0x00000000000000000000000000000000000000cc", amount: "4000000000000000000", status: "Pending",
+      created_at: 0, expires_at: 0 },
+  ],
+};
+
+function fmt(value, decimals) {
+  const v = BigInt(value ?? 0), base = 10n ** BigInt(decimals);
+  const frac = (v % base).toString().padStart(decimals, "0").replace(/0+$/, "").slice(0, 6);
+  return `${(v / base).toLocaleString("en-US")}${frac ? "." + frac : ""}`;
+}
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === "class" ? (n.className = v) : n.setAttribute(k, v);
+  for (const c of children) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+function short(s) { return s && s.length > 14 ? `${s.slice(0, 8)}...${s.slice(-4)}` : s; }
+
+async function view(rpc, contract, method, args) {
+  const res = await fetch(rpc, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "query", params: { request_type: "call_function",
+      finality: "final", account_id: contract, method_name: method, args_base64: btoa(JSON.stringify(args)) } }) });
+  const body = await res.json();
+  if (body.error || body.result?.error) throw new Error(body.error?.data ?? body.error?.message ?? body.result.error);
+  return JSON.parse(new TextDecoder().decode(new Uint8Array(body.result.result)));
+}
+
+// Owner actions are printed as commands for the owner to sign, never sent from here.
+function ownerCmd(method, args) {
+  const contract = $("contract").value || "CONTRACT";
+  const owner = $("owner").value || "OWNER";
+  return `near call ${contract} ${method} '${JSON.stringify(args)}' --accountId ${owner} --depositYocto 1 --gas 100000000000000`;
+}
+function show(id, text) { const n = $(id); n.textContent = text; n.hidden = false; navigator.clipboard?.writeText(text).catch(() => {}); }
+
+function render(data) {
+  const { config, tokens, tickets } = data;
+  const chain = Number($("chain").value || 46630);
+  $("badges").replaceChildren(
+    el("span", { class: "badge ok" }, config.network),
+    el("span", { class: `badge ${config.paused ? "bad" : "ok"}` }, config.paused ? "Paused" : "Running"),
+    config.pending_upgrade ? el("span", { class: "badge warn" }, "Upgrade pending") : "",
+  );
+
+  $("budgets").replaceChildren(...tokens.map(({ symbol, decimals, status: s }) => {
+    if (!s.token) return el("div", { class: "panel" }, `${symbol}: not allowlisted on chain ${chain}`);
+    const unitDecimals = s.cap_unit === "shares" ? 18 : decimals;
+    const max = BigInt(s.token.max_per_day), spent = BigInt(s.spent_today);
+    const pct = max === 0n ? 0 : Number((spent * 1000n) / max) / 10;
+    const unit = s.cap_unit === "shares" ? "shares" : symbol;
+    return el("div", { class: "panel" },
+      el("div", { class: "row" }, el("strong", {}, symbol), el("span", { class: "sub" }, s.token.kind)),
+      el("div", { class: "bar" }, el("span", { class: pct >= 100 ? "full" : pct >= 75 ? "hot" : "", style: `width:${Math.min(pct, 100)}%` })),
+      el("div", { class: "stats" },
+        el("div", { class: "stat" }, el("span", { class: "sub" }, "Spent"), el("b", {}, `${fmt(s.spent_today, unitDecimals)} ${unit}`)),
+        el("div", { class: "stat" }, el("span", { class: "sub" }, "Left today"), el("b", {}, `${fmt(s.remaining_today, unitDecimals)} ${unit}`))),
+      el("p", { class: "note" },
+        `Per request up to ${fmt(s.token.max_per_request, unitDecimals)} ${unit}. `,
+        s.token.approval_above ? `Above ${fmt(s.token.approval_above, unitDecimals)} needs your approval.` : "No approval step."));
+  }));
+
+  const bySymbol = Object.fromEntries(tokens.map((t) => [t.address.toLowerCase(), t]));
+  $("tickets").replaceChildren(...(tickets.length ? tickets.map((t) => {
+    const tok = bySymbol[t.token.toLowerCase()];
+    const unitDecimals = tok?.status.cap_unit === "shares" || tok?.status.token?.kind !== "Plain" ? 18 : tok.decimals;
+    const actions = t.status === "Pending"
+      ? el("div", { class: "row" },
+          Object.assign(el("button", { type: "button" }, "Approve"), { onclick: () => show("ticket-cmd", ownerCmd("approve_ticket", { ticket_id: t.id })) }),
+          Object.assign(el("button", { type: "button", class: "ghost" }, "Reject"), { onclick: () => show("ticket-cmd", ownerCmd("reject_ticket", { ticket_id: t.id })) }))
+      : el("span", { class: "sub" }, "Waiting for the agent");
+    return el("tr", {},
+      el("td", {}, `#${t.id}`), el("td", { class: "mono" }, t.agent), el("td", {}, tok?.symbol ?? short(t.token)),
+      el("td", {}, fmt(t.amount, unitDecimals)), el("td", { class: "mono" }, short(t.recipient)),
+      el("td", {}, el("span", { class: `badge ${t.status === "Pending" ? "warn" : "ok"}` }, t.status)), el("td", {}, actions));
+  }) : [el("tr", {}, el("td", { colspan: "7", class: "sub" }, "Nothing waiting."))]));
+
+  const s0 = tokens[0]?.status ?? {};
+  const inFlight = s0.in_flight;
+  $("signing").replaceChildren(
+    el("dt", {}, "Next nonce"), el("dd", {}, s0.next_nonce ?? "0"),
+    el("dt", {}, "Last signed"), el("dd", {}, s0.last_signed_nonce ?? "none"),
+    el("dt", {}, "In flight"), el("dd", {}, inFlight ? `#${inFlight.request_id} ${inFlight.kind}, nonce ${inFlight.nonce}, ${inFlight.age_s}s` : "none"),
+    el("dt", {}, "Requests today"), el("dd", {}, `${s0.requests_today ?? 0} of ${s0.max_requests_per_day ?? config.params.max_requests_per_day}`));
+
+  $("pause").textContent = config.paused ? "Resume" : "Pause";
+  $("pause").onclick = () => show("safety-cmd", ownerCmd("set_paused", { paused: !config.paused }));
+  $("burn").onclick = () => {
+    const nonce = Number(prompt("Nonce to burn", String(s0.last_signed_nonce ?? 0)) ?? NaN);
+    if (Number.isInteger(nonce) && nonce >= 0) show("safety-cmd", ownerCmd("burn_nonce", { chain_id: chain, fees: {
+      evm_nonce: nonce, gas_limit: "21000", max_fee_per_gas: "PICK_ABOVE_ANY_PENDING", max_priority_fee_per_gas: "PICK_ABOVE_ANY_PENDING" } }));
+  };
+
+  $("config").replaceChildren(...[
+    ["Owner", config.owner], ["MPC signer", config.signer], ["Derivation path", config.path],
+    ["Sign gas", `${config.sign_gas_tgas} Tgas`], ["Observation max age", `${config.params.max_observation_age_s} s`],
+    ["Unit-change window", `${config.params.corp_action_window_s} s`], ["Approved ticket lifetime", `${config.params.approved_ticket_ttl_s} s`],
+    ["Upgrade delay", `${config.params.upgrade_delay_s / 3600} h`], ["Pending upgrade", config.pending_upgrade ? config.pending_upgrade.code_hash : "none"],
+  ].flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]));
+  $("view").hidden = false;
+}
+
+$("demo").onclick = () => { $("error").hidden = true; render(DEMO); };
+$("connect").onsubmit = async (e) => {
+  e.preventDefault();
+  $("error").hidden = true;
+  try {
+    const rpc = $("rpc").value.trim(), contract = $("contract").value.trim(), chain = Number($("chain").value);
+    const tokens = $("tokens").value.split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+      const [symbol, address, decimals] = s.split(":");
+      if (!/^0x[0-9a-fA-F]{40}$/.test(address ?? "")) throw new Error(`bad token entry "${s}"`);
+      return { symbol, address, decimals: Number(decimals ?? 18) };
+    });
+    const config = await view(rpc, contract, "get_config", {});
+    const withStatus = await Promise.all(tokens.map(async (t) => ({ ...t,
+      status: await view(rpc, contract, "get_status", { chain_id: chain, token: t.address }) })));
+    if (!withStatus.length) withStatus.push({ symbol: "-", address: "0x0000000000000000000000000000000000000000", decimals: 18,
+      status: await view(rpc, contract, "get_status", { chain_id: chain, token: null }) });
+    const tickets = await view(rpc, contract, "list_tickets", { from_index: 0, limit: 50 });
+    if (!$("owner").value) $("owner").value = config.owner;
+    render({ config, tokens: withStatus, tickets });
+  } catch (err) {
+    $("error").textContent = `Could not load: ${err.message}`;
+    $("error").hidden = false;
+  }
+};
+</script>
+</body>
+</html>
