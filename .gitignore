@@ -11,3 +11,8 @@ neardev/
 keys/
 *.near-credentials
 result.json
+
+# Agent
+node_modules/
+agent/dist/
+agent/agent.config.json

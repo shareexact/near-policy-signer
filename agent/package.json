@@ -1,0 +1,28 @@
+{
+  "name": "policy-signer-agent",
+  "version": "0.1.0",
+  "description": "Agent runtime and CLI for the NEAR policy signer: plan, read, preview, request, verify, broadcast.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": { "policy-agent": "dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "bs58": "6.0.0",
+    "near-api-js": "4.0.4",
+    "viem": "2.21.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.9.0",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
+  }
+}

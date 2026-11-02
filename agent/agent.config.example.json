@@ -1,0 +1,29 @@
+{
+  "near": {
+    "networkId": "testnet",
+    "rpcUrl": "https://rpc.testnet.near.org",
+    "contractId": "policy.YOUR-ACCOUNT.testnet",
+    "agentAccountId": "agent.YOUR-ACCOUNT.testnet",
+    "mpcContractId": "v1.signer-prod.testnet",
+    "path": "robinhood-46630-1",
+    "requestGasTgas": 150
+  },
+  "chains": {
+    "46630": {
+      "rpcUrl": "https://rpc.testnet.chain.robinhood.com",
+      "explorerTxUrl": "https://explorer.testnet.chain.robinhood.com/tx/",
+      "allowBroadcast": false
+    }
+  },
+  "mainnetChainIds": [4663],
+  "allowMainnet": false,
+  "tokens": [
+    { "symbol": "MSHR", "chainId": 46630, "address": "0x0000000000000000000000000000000000000001", "kind": "StockExact" }
+  ],
+  "recipients": [
+    { "label": "alice", "chainId": 46630, "address": "0x0000000000000000000000000000000000000002" }
+  ],
+  "fees": { "gasLimit": "120000", "maxFeePerGas": "40000000", "maxPriorityFeePerGas": "1000000" },
+  "maxShortfall": "1",
+  "planner": { "provider": "rules" }
+}
