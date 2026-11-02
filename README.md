@@ -1,112 +1,165 @@
-# ShareExact policy signer for NEAR
+# Policy Signer
 
-An AI agent that can move Stock Tokens should never hold a key.
+**A spending firewall for AI agents that move tokens on EVM chains, built on NEAR Chain Signatures.**
 
-This repository is a NEAR HACKATHON entry and the NEAR control plane for ShareExact. The agent holds only a NEAR function-call key. The contract builds the exact Robinhood Chain transaction itself, checks it against the owner's policy and the share unit, and only then asks the NEAR MPC network for a signature through Chain Signatures. **The signed payload is exactly the payload the policy checked.** When the agent gets the number wrong (shares instead of raw units, a stale multiplier, a pending split, an amount over the cap), the contract refuses with a named reason and nothing is signed.
+An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key at all. It holds a NEAR function-call key that can do one thing: ask a NEAR contract to send a transfer. The contract builds the exact EVM transaction itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign it. **The payload signed is exactly the payload checked.** Large transfers wait for a human. Anything outside the policy is refused with a named reason, recorded on chain, and nothing is signed.
 
 **Why NEAR:** the agent holds no key; only the NEAR contract can obtain an MPC signature, and only for a transaction it built and checked itself.
 
-**How it extends ShareExact:** ShareExact already enforces exact share delivery on Robinhood Chain. This contract adds a policy layer for any agent allowed to move those tokens: a control that does not depend on the agent being correct, with daily caps, allowlists and an onchain refusal log.
+Built for the NEAR HACKATHON, tracks AI Security & Defense and Open Innovation.
 
-## What is in this repository
+## How it works
 
-All code here was written in the hackathon window. It builds on [ShareExact](https://github.com/shareexact/shareexact)'s `ExactTransfer` contract and SDK (MIT), which predate this hackathon and are not part of this entry. Exact mode calls a deployed `ExactTransfer`; no ShareExact code is copied here.
+```mermaid
+flowchart LR
+  U[Instruction: send 3 MSHR to alice] --> P[AI planner<br/>NEAR AI Cloud or offline rules]
+  P -->|untrusted proposal| A[Agent runtime<br/>reads token state at one block]
+  A -->|request + observation<br/>function-call key| C[Policy contract on NEAR]
+  C -->|refused: named reason, event| A
+  C -->|above soft limit| Q[Approval queue]
+  Q -->|owner approves in wallet| A
+  C -->|builds tx, reserves budget| M[NEAR MPC network<br/>Chain Signatures]
+  M -->|signature| C
+  C -->|unsigned tx + signature| A
+  A -->|checks sighash and signer,<br/>then broadcasts| E[EVM chain<br/>Robinhood Chain]
+  O[Owner console] -.->|reads views| C
+```
+
+1. **Plan.** The planner turns plain text into `{token, recipient, amount}`. Its output is untrusted: it is checked against the agent's config, and the contract enforces everything again.
+2. **Read.** For a Stock Token, the runtime reads `uiMultiplier`, `newUIMultiplier` and `effectiveAt` from one pinned block.
+3. **Request.** The agent calls `request` with the transfer, what it observed and the fees. It never supplies calldata or a hash.
+4. **Decide.** The contract checks the policy and returns one of: a named refusal, a ticket in the approval queue, or a signature request. Before calling the MPC network it reserves the nonce and the budget, so two requests can never spend the same budget.
+5. **Sign.** The MPC network signs the sighash of the transaction the contract built. The callback records the signature, or releases the reservation if signing failed.
+6. **Verify and send.** The runtime checks that the payload hashes to the contract's sighash and that the signature recovers to the contract's derived address, then broadcasts, but only if the config allows broadcasting on that chain.
+
+## What it guarantees
+
+- The agent can only obtain signatures for transfers the contract built, to allowlisted tokens and recipients, within caps, with capped fees.
+- **Caps cannot be shrunk by a false observation.** Every token has one kind and one budget, counted in the unit the signed calldata carries (see [Token kinds](#token-kinds)).
+- Amounts above a soft limit need the owner's approval: single-use, expiring tickets that never lift a hard cap.
+- The owner can pause at once, and can void signatures already issued by burning their nonces.
+- Each agent has its own request limit and optional per-token daily cap, on top of the global caps.
+- Every refusal, queue entry, signature and owner action is a NEP-297 event: an audit trail on chain.
+- The code can change only through a 48 hour timelock with an on-chain announcement, or never, once `disable_upgrades` is called.
+
+What it does not protect against, and what the operator must do (delete the contract account's keys, size allowances, use burns), is in [SECURITY.md](SECURITY.md).
+
+## Try it in five minutes (no keys, no funds, no network)
+
+| Do | See |
+|---|---|
+| `cargo test` | `policy-signer` 75 passed, `mock-signer` 5 passed: every refusal, the approval queue, pause and burn, owner controls, the upgrade timelock, and transaction encoding |
+| `cd agent && npm ci && npm test` | 25 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong one |
+| `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
+| Open `dashboard/index.html` in a browser, click **Demo data** | Today's budget per token, a queued 4-share request, and the exact owner command for **Approve** |
+
+The contract tests use `near-sdk` unit testing; wasm builds run in CI (`.github/workflows/ci.yml`) with `cargo near build`.
+
+### The scenarios the tests act out
+
+| An agent tries to | The contract answers |
+|---|---|
+| Send 6 shares when the limit is 5, claiming a multiplier of 100 so the raw amount looks tiny | `AmountCapExceeded` (shares are what Exact mode puts on chain) |
+| Send to an address it made up | `RecipientNotAllowed` |
+| Send while a split takes effect within two hours | `MultiplierChangePending` |
+| Send using an observation taken before a split that has since happened | `ObservationCrossedChange` |
+| Send 4 shares when anything above 2 needs approval | `PENDING_APPROVAL`, ticket 1; signed only after the owner approves and the agent re-sends with a fresh observation |
+| Reuse that ticket, or use another agent's | `TicketInvalid` |
+| Keep sending after the owner pressed pause | `Paused` |
+| Replace a signed transaction with a different one at the same nonce | `InvalidReplacement` |
+
+## Components
 
 | Path | What it is |
 |---|---|
-| `policy-signer` | C1. Rust NEAR contract: policy, refusals, EIP-1559 construction, MPC `sign` call and callback |
-| `mock-signer` | C7. Mock MPC signer with the same `sign` shape, for sandbox tests without keys or funds. Its signatures do not recover and must never be broadcast |
+| `policy-signer/` | The NEAR contract (Rust, near-sdk 5.30). Policy, refusals, approval queue, EIP-1559 construction, MPC `sign` call and callback, owner controls, upgrades |
+| `mock-signer/` | A mock of the MPC `sign` method for sandbox tests. Its signatures do not recover and must never be broadcast |
+| `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
+| `dashboard/` | The owner console: one static page, no keys, no build |
+| `SECURITY.md` | Threat model, deployment rules, operating limits |
 
-Planned, not in this repository yet: the agent runtime (C2), the AI planner (C6) and an owner-gated mock Stock Token for testnet (C5).
+## Token kinds
 
-## Request flow
+| Kind | Use for | Agent sends | Calldata | Caps counted in |
+|---|---|---|---|---|
+| `Plain` | Any ERC-20 (stablecoins, governance tokens) | raw units | `transfer(to, raw)` | raw units |
+| `StockExact` | Stock Tokens, recommended | shares (18 decimals) | ShareExact `ExactTransfer.transferShares(token, to, shares, shortfall)`; the chain converts with the live multiplier | shares |
+| `StockDirect` | Stock Tokens where `ExactTransfer` is not deployed | shares | `transfer(to, raw)`, raw computed from the observed multiplier | raw units |
 
-1. The agent reads `uiMultiplier()`, `newUIMultiplier()` and `effectiveAt()` from the token and calls `request` with what it saw, the block it saw it at, the shares to send and the fees.
-2. C1 checks the request against the owner's policy. Any failure returns a named refusal, logs a `refused` event and asks for nothing.
-3. C1 reserves the nonce and the daily budget, builds the EIP-1559 transaction from the checked fields, hashes it and calls the MPC `sign` method from its own balance. The agent never supplies calldata or a hash.
-4. The callback either records the signature (`signed` event, returned to the caller) or releases the reservation (`sign_failed`).
-5. The agent assembles the raw transaction, recovers the signer locally, checks it is C1's derived address, and broadcasts.
-
-C1 cannot read Robinhood Chain state; NEAR Chain Signatures is outbound only. It checks the agent's observation for completeness, age and consistency. In **Exact** mode the transaction calls ShareExact `ExactTransfer.transferShares`, which re-reads the multiplier at execution, so even a false observation cannot change the shares delivered. In **Direct** mode a plain ERC-20 `transfer` is bounded by caps and allowlists only.
+A Stock Token's raw ERC-20 unit is not one share: one raw unit is `uiMultiplier / 1e18` shares, and the ratio changes on every dividend reinvestment and split. Stock Token requests carry an observation of that state, and the contract refuses stale, incomplete or straddling observations.
 
 ## Refusals
 
-Where a refusal means the same condition as a ShareExact contract error, it uses the same name. For a complete observation, the pending-change predicate matches `unitChangeImminent` in `@shareexact/sdk` and `ShareExactGuard`. An incomplete observation is refused as `ObservationIncomplete` first, and there the SDK may answer differently.
+Where a refusal means the same condition as a ShareExact contract error, it has the same name.
 
-| Refusal | Same name as | Condition |
-|---|---|---|
-| `ChainNotAllowed` | | Chain not allowlisted. Robinhood Chain mainnet (4663) can never be allowlisted on a `.testnet` signer |
-| `TokenNotAllowed` | | Token not allowlisted, or not an address |
-| `RecipientNotAllowed` | | Recipient not allowlisted, or not an address |
-| `ModeNotAllowed` | | Exact mode on a chain with no `ExactTransfer` configured |
-| `ObservationIncomplete` | | `new_multiplier`, `effective_at` or the block timestamp missing. Fails closed |
-| `StaleObservation` | | Observation older than `max_observation_age_s` (default 120 s) or more than `max_clock_skew_s` (default 15 s) ahead of NEAR's clock |
-| `UnitUnavailable` | `ExactTransfer.UnitUnavailable` | Multiplier is zero |
-| `ObservationCrossedChange` | | A scheduled change took effect after the observation was taken |
-| `MultiplierChangePending` | `ExactTransfer.MultiplierChangePending` | A change is scheduled within `corp_action_window_s` (default 7200 s, floor 600 s) |
-| `ZeroAmount` | `ExactTransfer.ZeroAmount` | Zero shares, or a request that floors to zero raw units |
-| `ShareShortfall` | `ExactTransfer.ShareShortfall` | Floor rounding loses more than `max_shortfall` |
-| `AmountCapExceeded` | | Over a per-request or per-day cap for the token, in raw units or in shares. Both apply in both modes: raw caps bind Direct mode, where raw is in the calldata; share caps bind Exact mode, where shares are in the calldata |
-| `GasCapExceeded` | | Fees or gas limit over the chain's caps |
-| `InvalidFees` | | Priority fee above max fee, or zero gas limit |
-| `RequestInFlight` | | A request on this chain is still waiting for the MPC signer |
-| `NonceOutOfOrder` | | Not the next nonce and not a valid replacement |
-| `InvalidReplacement` | | Same nonce as the last signed transaction, but a different call or fees not strictly higher |
-| `RequestCapExceeded` | | Daily request cap reached |
+| Refusal | Condition |
+|---|---|
+| `Paused` | The owner paused the contract |
+| `AgentNotAllowed` | Caller is not a registered, enabled agent |
+| `RequestCapExceeded` | Global or per-agent daily request limit reached |
+| `RequestInFlight` | A request on this chain is waiting for the MPC network |
+| `ChainNotAllowed` / `TokenNotAllowed` / `RecipientNotAllowed` | Not allowlisted, or not a valid address |
+| `ExactTransferMissing` | A `StockExact` token on a chain with no `ExactTransfer` configured |
+| `ObservationIncomplete` | Stock Token request without an observation, or with a missing field. Fails closed |
+| `StaleObservation` | Older than `max_observation_age_s` (120 s) or more than `max_clock_skew_s` (15 s) ahead of NEAR's clock |
+| `UnitUnavailable` | Multiplier is zero (same as `ExactTransfer.UnitUnavailable`) |
+| `ObservationCrossedChange` | A scheduled change took effect after the observation was taken |
+| `MultiplierChangePending` | A change is scheduled within `corp_action_window_s` (7200 s, floor 600 s). For a complete observation, the same predicate as `unitChangeImminent` in `@shareexact/sdk` |
+| `ZeroAmount` | Zero, or floors to zero raw units (same as `ExactTransfer.ZeroAmount`) |
+| `ShareShortfall` | Floor rounding loses more than `max_shortfall` (same as `ExactTransfer.ShareShortfall`) |
+| `AmountOverflow` | The share to raw conversion does not fit in 128 bits |
+| `InvalidFees` / `GasCapExceeded` | Priority fee above max fee or zero gas limit / fees or gas over the chain's caps |
+| `NonceOutOfOrder` / `InvalidReplacement` | Not the next nonce / same nonce as the last signed transaction but a different call, or fees not strictly higher |
+| `AmountCapExceeded` / `AgentCapExceeded` | Over the token's per-request or daily cap / over the agent's own daily cap |
+| `TicketInvalid` | The ticket is missing, not approved, expired, another agent's, or for a different transfer |
+| `QueueFull` | `max_open_tickets` open tickets already |
 
-## Trust model
+## Owner controls
 
-| Actor | Can | Cannot |
-|---|---|---|
-| Agent account (function-call key for `request` only) | Submit requests, read views | Change policy, request an `approve`, attach deposits, get a signature for a transaction C1 did not build |
-| Owner (separate full-access account) | Set allowlists, caps and parameters; request the capped `approve` Exact mode needs | n/a; the owner is trusted |
-| MPC network | Sign for C1's derivation path | Sign for C1's path without a call from C1 |
-| Compromised agent | Lie about the multiplier; collect signatures within caps | In Exact mode, change the shares delivered or exceed the allowance. In both modes, exceed caps or use a token or recipient that is not allowlisted |
+All owner methods require exactly 1 yoctoNEAR.
 
-Stated limits a user must know:
-- Signed EVM transactions do not expire, so daily caps limit signatures, not executions. In Exact mode the `approve` allowance is the hard spending bound.
-- The request counter is not released when signing fails; it bounds MPC calls, not transfers.
-- **Never delete the C1 account.** The derived EVM address depends only on the account id and the path, so whoever re-creates the name controls the address.
-- The owner, agent and contract must be three different accounts; `new` enforces this.
-- If the callback itself fails (for example, out of gas), the owner can clear the in-flight request. Clearing does not release budget or advance the nonce. MPC errors and timeouts do not need this: the callback handles them.
+| Method | Effect |
+|---|---|
+| `add_agent`, `remove_agent`, `set_agent_cap` | Register agents, their request limits and per-token daily caps |
+| `set_chain`, `set_token`, `set_recipient`, `set_params` | Allowlists, caps, soft limits and timing |
+| `approve_ticket`, `reject_ticket` | Decide queued requests |
+| `set_paused` | Stop new requests at once; callbacks in flight still settle |
+| `burn_nonce` | Sign a zero-value transaction at a nonce, voiding any signature issued for it |
+| `request_approve` | Sign the capped ERC-20 `approve` that `StockExact` needs |
+| `reset_nonce`, `clear_in_flight` | Recover from a transaction that was never mined or a callback that failed |
+| `propose_owner` / `accept_owner` | Two-step ownership transfer |
+| `propose_upgrade`, `apply_upgrade`, `cancel_upgrade`, `disable_upgrades` | Timelocked code upgrades, or none |
 
-## Run the tests
+Views: `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
 
-No keys, funds or network needed. These are unit tests; the near-workspaces sandbox tests with the mock signer are planned and not in this repository yet.
+## Run it on NEAR testnet
 
-```sh
-cargo test
-```
+Nothing in this repository has been deployed yet. These are the steps, in order; deployment rules 1 and 2 in [SECURITY.md](SECURITY.md) are not optional.
 
-Expected result: `policy-signer` 51 passed, `mock-signer` 4 passed. The tests cover every refusal above, including a false multiplier in Exact mode, reservation and release, the replacement rule, access control, and EIP-1559 encoding. The encoding tests compare C1's output byte for byte with transactions serialized by viem 2.21.0 (`serializeTransaction`, chain 46630).
+1. Build: `cd policy-signer && cargo near build non-reproducible-wasm --locked`.
+2. Create three testnet accounts: the contract, an owner, and an agent.
+3. Deploy with the init call in the same transaction (check `cargo near deploy --help` for your version):
+   `new({"owner":"<owner>","signer":"v1.signer-prod.testnet","path":"robinhood-46630-1","network":"Testnet"})`
+4. **Delete every access key on the contract account**, then confirm the key list is empty.
+5. As the owner (1 yoctoNEAR each): `add_agent`, `set_chain(46630, ...)`, `set_token(...)`, `set_recipient(...)`. Read the MPC contract's `config` view and call `set_sign_gas` if its sign gas requirement is above 50 Tgas.
+6. Give the agent account a function-call key for `request` on the contract, with a finite allowance (about 0.015 NEAR per request at 150 Tgas).
+7. Fund the contract with testnet NEAR for storage and 1 yoctoNEAR per signature.
+8. Find the contract's EVM address: `policy-agent address` calls the MPC contract's `derived_public_key` view with `{"path", "predecessor": <contract>, "domain_id": 0}` and converts the key. Fund it with Robinhood Chain testnet ETH.
+9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in, set `NEAR_AGENT_KEY`, and run `policy-agent preview "send 1 MSHR to alice"`, then `policy-agent send ... --broadcast` once broadcasting is enabled in the config.
 
-## Build for NEAR
+The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"path","domain_id":0}}`), the 1 yoctoNEAR deposit and the response shape match the `near/mpc` contract source. The live testnet configuration has not been checked yet.
 
-```sh
-rustup target add wasm32-unknown-unknown
-cargo install cargo-near
-cd policy-signer && cargo near build non-reproducible-wasm
-cd ../mock-signer && cargo near build non-reproducible-wasm
-```
+## Relationship to ShareExact
 
-## Deploy to NEAR testnet (not yet done)
-
-Nothing in this repository has been deployed. The steps below are the plan for gate G1.
-
-1. Create three testnet accounts: the contract, a separate owner and a separate agent.
-2. Deploy and initialize:
-   `new({"owner":"<owner>","agent":"<agent>","signer":"v1.signer-prod.testnet","path":"robinhood-46630-1"})`
-3. As the owner: `set_chain(46630, ...)`, `set_token(...)`, `set_recipient(...)`.
-4. Read the MPC contract's live sign gas requirement and call `set_sign_gas` if it is above 50 Tgas.
-5. Give the agent account a function-call access key restricted to `request` on the contract, with a finite allowance.
-6. Fund the contract with testnet NEAR (1 yoctoNEAR per signature plus storage).
-7. Derive C1's EVM address from the MPC contract (`derived_public_key` for the contract account and the path) and fund it with Robinhood Chain testnet ETH.
-
-To confirm at G1: that the `sign` argument shape (`request.payload_v2.Ecdsa`, `path`, `domain_id`) and the response shape are accepted when the caller is a contract.
+All code in this repository was written in the hackathon window, starting 2026-10-31, after the 2026-10-19 announcement. It builds on [ShareExact](https://github.com/shareexact/shareexact)'s `ExactTransfer` contract and SDK (MIT), which predate this hackathon and are not part of this entry: `StockExact` tokens call a deployed `ExactTransfer`, and no ShareExact code is copied here.
 
 ## Libraries
 
-near-sdk 5.30, omni-transaction 0.5 (Apache-2.0, `evm` feature only) for EIP-1559 serialization, viem 2.21 (test vectors only). ShareExact's `ExactTransfer` and `@shareexact/sdk` are the same author's earlier work (MIT), used as an external dependency.
+near-sdk 5.30; omni-transaction 0.5 (`evm` feature) for EIP-1559 serialization; viem 2.21 and near-api-js 4.0 in the agent; zod for validation; vitest. The planner can use NEAR AI Cloud through its OpenAI-compatible API (`https://cloud-api.near.ai/v1`).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 

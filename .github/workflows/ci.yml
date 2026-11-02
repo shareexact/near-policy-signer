@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --locked --tests -- -D warnings
+      - name: Unit tests
+        run: cargo test --locked
+      - name: Install cargo-near
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+      - name: Build wasm
+        run: |
+          (cd policy-signer && cargo near build non-reproducible-wasm --locked)
+          (cd mock-signer && cargo near build non-reproducible-wasm --locked)
+          ls -l target/near/*/*.wasm
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Test vectors match the contract tests
+        run: |
+          npm run -s vectors > /tmp/vectors.json
+          grep -q d6bd87cccf2d404096fb7cdd9c10f99e4a330c4a5a7a9d94930e377196015c62 /tmp/vectors.json
+          grep -q 2af050832cd51552e2244b0c10632b31e83b5d5f1bd148d9cfd57172798a8f87 /tmp/vectors.json

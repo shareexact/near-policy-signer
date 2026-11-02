@@ -196,6 +196,7 @@ pub struct Config {
     pub params: Params,
     pub requests_today: u32,
     pub pending_upgrade: Option<PendingUpgrade>,
+    pub upgrades_disabled: bool,
 }
 
 #[near(contract_state)]
@@ -225,6 +226,7 @@ pub struct PolicySigner {
     requests_today: u32,
     next_request_id: u64,
     pending_upgrade: Option<PendingUpgrade>,
+    upgrades_disabled: bool,
 }
 
 #[near]
@@ -273,6 +275,7 @@ impl PolicySigner {
             requests_today: 0,
             next_request_id: 1,
             pending_upgrade: None,
+            upgrades_disabled: false,
         }
     }
 
@@ -809,6 +812,7 @@ impl PolicySigner {
     #[payable]
     pub fn propose_upgrade(&mut self, code_hash: String) {
         self.assert_owner();
+        require!(!self.upgrades_disabled, "upgrades are disabled");
         let hash = code_hash.trim_start_matches("0x").to_ascii_lowercase();
         require!(
             hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -822,6 +826,15 @@ impl PolicySigner {
         self.pending_upgrade = Some(pending);
     }
 
+    /// Make the code permanent. Irreversible: no later owner can upgrade.
+    #[payable]
+    pub fn disable_upgrades(&mut self) {
+        self.assert_owner();
+        self.upgrades_disabled = true;
+        self.pending_upgrade = None;
+        emit("upgrades_disabled", json!({}));
+    }
+
     #[payable]
     pub fn cancel_upgrade(&mut self) {
         self.assert_owner();
@@ -832,6 +845,7 @@ impl PolicySigner {
     #[payable]
     pub fn apply_upgrade(&mut self, code: Base64VecU8) -> Promise {
         self.assert_owner();
+        require!(!self.upgrades_disabled, "upgrades are disabled");
         let pending = self
             .pending_upgrade
             .take()
@@ -871,6 +885,7 @@ impl PolicySigner {
             params: self.params.clone(),
             requests_today: self.requests_today,
             pending_upgrade: self.pending_upgrade.clone(),
+            upgrades_disabled: self.upgrades_disabled,
         }
     }
 

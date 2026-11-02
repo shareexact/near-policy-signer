@@ -1,7 +1,7 @@
 //! Unit tests: every refusal, reservation and release, the replacement rule,
 //! the approval queue, pause and nonce burn, owner controls, the upgrade
 //! timelock, and EIP-1559 encoding against vectors produced independently by
-//! viem (regenerate with `scripts/vectors.mjs`).
+//! viem (regenerate with `cd agent && npm run vectors`).
 
 use super::*;
 use near_sdk::test_utils::{get_created_receipts, get_logs, VMContextBuilder};
@@ -1116,6 +1116,23 @@ fn upgrade_deploys_and_migrates_after_the_delay() {
         .iter()
         .any(|a| matches!(a, near_sdk::mock::MockAction::DeployContract { .. })));
     assert!(c.get_config().pending_upgrade.is_none());
+}
+
+#[test]
+#[should_panic(expected = "upgrades are disabled")]
+fn disabled_upgrades_stay_disabled() {
+    let mut c = setup();
+    as_owner();
+    c.propose_upgrade("ab".repeat(32));
+    as_owner();
+    c.disable_upgrades();
+    assert!(c.get_config().upgrades_disabled);
+    assert!(
+        c.get_config().pending_upgrade.is_none(),
+        "a pending upgrade is dropped"
+    );
+    as_owner();
+    c.propose_upgrade("cd".repeat(32));
 }
 
 #[test]

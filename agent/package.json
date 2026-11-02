@@ -5,13 +5,18 @@
   "license": "MIT",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
-  "bin": { "policy-agent": "dist/cli.js" },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "policy-agent": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "cli": "tsx src/cli.ts"
+    "cli": "tsx src/cli.ts",
+    "vectors": "node scripts/vectors.mjs"
   },
   "dependencies": {
     "bs58": "6.0.0",
