@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>near-policy-signer step 8: owner calls (Meteor)</title>
+<style>
+ body{font:15px/1.45 system-ui,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;color:#111}
+ h1{font-size:20px} h2{font-size:17px;margin-top:28px}
+ pre{background:#f4f4f4;padding:10px;white-space:pre-wrap;word-break:break-all;font-size:13px}
+ button{font-size:15px;padding:8px 14px;margin:4px 6px 4px 0} button:disabled{opacity:.45}
+ .ok{color:#0a7a2f;font-weight:600} .bad{color:#b00020;font-weight:600} .note{color:#555;font-size:13px}
+ #log{background:#111;color:#ddd;min-height:80px}
+</style>
+</head>
+<body>
+<h1>near-policy-signer @ 88e06a6: step 8 owner calls (NEAR testnet only)</h1>
+<p class="note">Signs only as <b>aa5hr.testnet</b> through Meteor Wallet. This page holds no keys; Meteor shows each transaction and you approve or reject it there. Each button sends ONE FunctionCall (1 yoctoNEAR, 30 Tgas) to policy-v1.shareexact-chainsig-demo.testnet. No account creation, no transfers, no access keys. Do them one at a time, in the order the demo asks.</p>
+<p>Connected: <span id="account" class="bad">not connected</span></p>
+<button id="connect">Connect Meteor</button><button id="disconnect">Disconnect</button><button id="refresh">Refresh on-chain state</button>
+<p id="gate" class="note">Checking policy-v1...</p>
+
+<h2>Step 8.4: approve ticket</h2>
+<p id="approve-gate" class="note"></p>
+<pre id="approve-desc"></pre>
+<button id="approve" disabled>Approve ticket 1 (approve_ticket)</button>
+<ul id="approve-out"></ul>
+
+<h2>Step 8.5: pause, then (after the box shows the Paused refusal) resume</h2>
+<p id="pause-gate" class="note"></p>
+<pre id="pause-desc"></pre>
+<button id="pause" disabled>Pause (set_paused true)</button><button id="resume" disabled>Resume (set_paused false)</button>
+<ul id="pause-out"></ul>
+
+<h2>Log</h2>
+<pre id="log"></pre>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>

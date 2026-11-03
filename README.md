@@ -145,7 +145,9 @@ Views: `list_recipients`, `list_scheduled_changes`, `get_status(chain_id, token)
 
 ## Run it on NEAR testnet
 
-Nothing in this repository has been deployed yet. These are the steps, in order; deployment rules 1 and 2 in [SECURITY.md](SECURITY.md) are not optional.
+The contract from commit `88e06a6` is live on NEAR testnet as `policy-v1.shareexact-chainsig-demo.testnet`, owned by `aa5hr.testnet`, with no access keys. It signs for `0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F` on Robinhood Chain testnet (46630). [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md) lists every transaction of the deployment and the demo, with hashes on both chains: a signed and broadcast transfer, a refusal over the cap, a request queued for approval and signed after the owner approved it, and a refusal while paused.
+
+To deploy your own instance, these are the steps, in order; deployment rules 1 and 2 in [SECURITY.md](SECURITY.md) are not optional.
 
 1. Build: `cd policy-signer && cargo near build non-reproducible-wasm --locked`.
 2. Create three testnet accounts: the contract, an owner, and an agent.
@@ -158,7 +160,7 @@ Nothing in this repository has been deployed yet. These are the steps, in order;
 8. Find the contract's EVM address: `npm run cli -- address` (in `agent/`) calls the MPC contract's `derived_public_key` view with `{"path", "predecessor": <contract>, "domain_id": 0}` and converts the key. Fund it with Robinhood Chain testnet ETH.
 9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in (use an RPC endpoint from the NEAR docs' provider list; the public endpoints are rate limited), set `NEAR_AGENT_KEY`, and from `agent/` run `npm run cli -- preview "send 1 MSHR to alice"`, then `npm run cli -- send "send 1 MSHR to alice" --broadcast` once broadcasting is enabled in the config. Keep `requestGasTgas` at least the contract's sign gas plus 40; the agent checks this before sending.
 
-The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"path","domain_id":0}}`), the 1 yoctoNEAR deposit and the response shape match the `near/mpc` contract source. The live testnet configuration has not been checked yet.
+The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"path","domain_id":0}}`), the 1 yoctoNEAR deposit and the response shape match the `near/mpc` contract source. The deployment above used them against the live testnet signer.
 
 ## Relationship to ShareExact
 

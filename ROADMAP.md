@@ -12,11 +12,12 @@ Where the policy signer goes after the hackathon. Each step keeps the two rules 
 
 - **Wallet approvals in the console (testnet).** The owner connects a NEAR wallet (MyNearWallet, Meteor or HERE) and approves, rejects, pauses, burns and executes or cancels scheduled changes from the browser. The page signs only when the connected account is the contract's owner and the contract is a `.testnet` account; otherwise it shows the near-cli command.
 
+- **Live testnet deployment.** The contract runs on NEAR testnet and signs native transfers on Robinhood Chain testnet through the MPC network: signed, refused, queued and approved, and paused requests, all with hashes in [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
+
 ## Next: from hackathon entry to daily tool
 
 | Step | What | Why it matters to a user |
 |---|---|---|
-| Live testnet deployment | Contract on NEAR testnet, a funded derived address on Robinhood Chain testnet, addresses in the README | Anyone can watch a real request get refused or signed |
 | Sandbox integration tests | The full request, sign and callback path with the mock signer in near-workspaces, in CI | The NEAR integration is proven on every commit |
 | Alerts | Notify the owner (email or Telegram) on every `escalated`, `change_scheduled`, `upgrade_proposed` and refusal spike, and before a Stock Token's unit change | The owner hears about anything that needs them, without watching a dashboard |
 
