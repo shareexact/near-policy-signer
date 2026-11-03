@@ -1,12 +1,72 @@
 # Policy Signer
 
-**A spending firewall for AI agents that move money on EVM chains, built on NEAR Chain Signatures.** ETH, any ERC-20, and Stock Tokens, on any EVM chain the NEAR MPC network signs for.
+**A spending firewall for AI agents that move money on EVM chains, built on NEAR Chain Signatures.** The agent gets a budget, not a wallet key. Live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet; ERC-20 and Stock Token transfers are implemented and unit-tested.
 
-An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key at all. It holds a NEAR function-call key that can do one thing: ask a NEAR contract to send a transfer. The contract builds the exact EVM transaction itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign it. **The payload signed is exactly the payload checked.** Large transfers wait for a human. Anything outside the policy is refused with a named reason, recorded on chain, and nothing is signed.
+An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key at all. It holds a NEAR function-call key that can do one thing: ask a NEAR contract to send a transfer. The contract builds the exact EVM transaction itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign it. **The payload signed is exactly the payload checked.** Large transfers wait for a human. Anything outside the policy is refused with a named reason and nothing is signed; when the agent submits the request, the refusal is logged on chain as an event.
 
-**Why NEAR:** the agent holds no key; only the NEAR contract can obtain an MPC signature, and only for a transaction it built and checked itself.
+**Why NEAR:** on NEAR, a contract can own an address on another chain. Policy Signer makes the owner's spending policy that owner: the policy does not guard a key, it is the only thing that can get the agent's wallet signed, and only for a transaction it built and checked itself.
 
-Built for the NEAR HACKATHON, tracks AI Security & Defense and Open Innovation.
+Built for the NEAR HACKATHON, tracks AI Security & Defense and Agent Economy.
+
+## For NEAR HACKATHON judges (2 minutes)
+
+**Demo video:** DEMO_POST_LINK
+
+**In one line:** the agent gets a budget, not a wallet key. A NEAR contract owns the agent's EVM address through Chain Signatures, builds every transfer itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign. The contract account has no access keys, and the agent's only key can call one method, `request`.
+
+### Proof on chain (NEAR testnet and Robinhood Chain testnet, Nov 2 2026)
+
+| What happened | NEAR testnet | Robinhood Chain testnet (46630) |
+|---|---|---|
+| The contract account deletes its only key | [BrsSE5DB...](https://testnet.nearblocks.io/txns/BrsSE5DBW5jRWsweXap8dyQqLSBgvrQcCHxUYm1CrmEu) | |
+| The agent gets one function-call key, method `request` only | [mNYTqf2e...](https://testnet.nearblocks.io/txns/mNYTqf2eXxdtpUexryukrbDpuoXP9Avxo6rtNkethLm) | |
+| The agent sends 0.0004 ETH: signed by the MPC network, confirmed | [CQ5cihQx...](https://testnet.nearblocks.io/txns/CQ5cihQx3pBsoRLcTUqCRMVBukdHPCjoncgJ9WSraXPQ) | [0x270f77ca...](https://explorer.testnet.chain.robinhood.com/tx/0x270f77ca80c07a2ef0c2cd4e28838a6f8b35d649eba659f468a183b85a6b510c) |
+| The agent asks for 0.0008 ETH: queued for the owner (ticket 1) | [BE3AfBTF...](https://testnet.nearblocks.io/txns/BE3AfBTFjSB3XkwGJntEkKwfe4Z39HzSNBLWfDKx9rg1) | |
+| The owner approves ticket 1 in a NEAR wallet (Meteor) | [G4vGHLGN...](https://testnet.nearblocks.io/txns/G4vGHLGNerxLVdM2v3JBsF4DuMjbDygJxYYoxBkyrR2J) | |
+| The agent re-sends with the ticket: signed, confirmed | [9tbbDUhi...](https://testnet.nearblocks.io/txns/9tbbDUhiPLiUt4k14MbcfB2jRnhYMN9fVjksfnf6APb1) | [0xc9ece954...](https://explorer.testnet.chain.robinhood.com/tx/0xc9ece954844ce74921104ee2ba88e7664a1ba57bd1b7edf582074ab194ddce1a) |
+| The owner pauses; the agent's next request is refused (`Paused`), then the owner resumes | [7Gvoi8de...](https://testnet.nearblocks.io/txns/7Gvoi8dei739fGF5XaR7aMYr3UZ2NeRiSkucpPp6Pttp), [GAJySQeS...](https://testnet.nearblocks.io/txns/GAJySQeS5z5ZcruUHMoFMv1jzELcfp1FWXsTo6SFeTx4) | |
+
+Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblocks.io/address/policy-v1.shareexact-chainsig-demo.testnet), owner `aa5hr.testnet`. Its address on 46630: [0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F](https://explorer.testnet.chain.robinhood.com/address/0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F). Every transaction, in order, with the two refusals that the agent's read-only check caught before any transaction: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
+
+### Check it yourself, no keys and no funds
+
+1. **The contract has no keys:** open the contract on NearBlocks above (Access Keys: none), or run `near account list-keys policy-v1.shareexact-chainsig-demo.testnet network-config testnet now`.
+2. **Ask the live contract what it would do** (the read-only `preview` view; no key needed):
+   ```
+   cd agent && npm ci
+   export AGENT_CONFIG=agent.config.judges.json
+   npm run cli -- preview "send 0.0004 ETH to alice"       # decision SIGN, with the exact unsigned transaction and sighash
+   npm run cli -- preview "send 0.002 ETH to alice"        # decision REFUSED, refusal AmountCapExceeded
+   npm run cli -- preview "send 0.0008 ETH to alice"       # decision NEEDS_APPROVAL
+   npm run cli -- preview "send 0.0004 ETH to alice-old"   # decision REFUSED, refusal LookalikeRecipient (address poisoning)
+   npm run cli -- preview "send 0.0004 ETH to bob"         # decision NEEDS_APPROVAL (a new recipient goes to the owner)
+   ```
+   `alice-old` shares the first and last four hex digits with `alice`. Answers depend on today's spend and on whether the owner has paused. The public RPC is rate limited; if a call fails, set `near.rpcUrl` to another testnet endpoint.
+3. **Run the tests** (about 5 minutes once dependencies are downloaded): `cargo test` (policy-signer 93, mock-signer 5) and `cd agent && npm ci && npm test` (35).
+
+### What is live and what is not
+
+| Status | What |
+|---|---|
+| Live on testnet, with transactions | Native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
+| Live, read-only | The over-cap and paused refusals of Nov 2 came from the contract's `preview` view, which the agent calls first, so they have no transaction. `request` runs the same `evaluate` function and logs a `refused` event; `send --skip-preview` submits it directly, as a compromised agent would |
+| Implemented, unit-tested only | ERC-20 (`Plain`) and Stock Token (`StockExact`, `StockDirect`) kinds; the policy delay; nonce burns and fee bumps; the upgrade timelock; the NEAR AI Cloud planner (tested against a mock; the testnet demo used the rule-based planner) |
+| Planned | Sandbox integration tests with `mock-signer`, alerts and agent packages: [ROADMAP.md](ROADMAP.md) |
+
+**Known limits** ([SECURITY.md](SECURITY.md)): testnet only, not audited. Signed transactions do not expire until their nonce is used or burned. Daily caps reset at 00:00 UTC. The owner is one NEAR account; the policy delay (off by default, 0 on this deployment) and the 48 hour upgrade timelock limit what a stolen owner key can do at once. Signing relies on the NEAR MPC network's threshold security.
+
+**Built in the window:** all code here was written after the 2026-10-19 announcement (first commit 2026-10-31). `StockExact` tokens call ShareExact's `ExactTransfer`, an earlier MIT project by the same author that is not part of this entry ([details](#relationship-to-shareexact)). Parts of the code were written with AI coding assistance.
+
+## Why not just...
+
+| Alternative | What goes wrong for an agent | Policy Signer |
+|---|---|---|
+| A small hot wallet for the agent | The key can leak or be talked out of the agent; it signs any amount to any address; no approval step, no pause | No wallet key to leak; allowlists, caps, an approval queue and pause, enforced by the contract |
+| A multisig | A human signs every payment, so the agent is not autonomous; at threshold 1 it is a hot wallet again | The agent acts alone inside the limits; the owner signs only above the soft limit |
+| A smart-contract wallet with session keys or spending limits | Needs account abstraction and a policy deployed on each chain; the agent holds a session key for that chain | A plain address on any EVM chain the NEAR MPC network signs for; one policy and one audit trail on NEAR; the contract writes the calldata, so the agent cannot slip in another call |
+| A hosted wallet API with policies | Keys and policy live on a company's servers; the policy is not publicly verifiable | The policy is public contract code on an account with no keys, with timelocked upgrades; every decision is a NEAR event; the NEAR MPC network signs |
+
+On a single chain with account abstraction, a session key with an allowance module comes close. What this adds: plain addresses on any EVM chain, transactions built by the policy itself, an on-chain look-alike refusal, and one audit trail for all chains.
 
 ## How it works
 
@@ -48,12 +108,12 @@ flowchart LR
 
 What it does not protect against, and what the operator must do (delete the contract account's keys, size allowances, use burns), is in [SECURITY.md](SECURITY.md).
 
-## Try it in five minutes (no keys, no funds, no network)
+## Try it in five minutes (no keys, no funds, no testnet access)
 
 | Do | See |
 |---|---|
 | `cargo test` | `policy-signer` 93 passed, `mock-signer` 5 passed: every refusal, the approval queue, new recipients and look-alikes, pause and burn, the policy delay, native transfers, owner controls, the upgrade timelock, and transaction encoding |
-| `cd agent && npm ci && npm test` | 31 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
+| `cd agent && npm ci && npm test` | 35 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
 | `cd dashboard && npm ci && npm run dev`, open the printed address, click **Demo data** | Today's budget per token, a queued 4-share request, a scheduled policy change, and the exact near-cli command the owner signs to approve it. With a deployed testnet contract, **Connect wallet (testnet)** lets the owner approve, reject, pause, burn and execute scheduled changes from a NEAR wallet (MyNearWallet, Meteor or HERE) |
 
@@ -145,7 +205,7 @@ Views: `list_recipients`, `list_scheduled_changes`, `get_status(chain_id, token)
 
 ## Run it on NEAR testnet
 
-The contract from commit `88e06a6` is live on NEAR testnet as `policy-v1.shareexact-chainsig-demo.testnet`, owned by `aa5hr.testnet`, with no access keys. It signs for `0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F` on Robinhood Chain testnet (46630). [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md) lists every transaction of the deployment and the demo, with hashes on both chains: a signed and broadcast transfer, a refusal over the cap, a request queued for approval and signed after the owner approved it, and a refusal while paused.
+The contract from commit `88e06a6` is live on NEAR testnet as `policy-v1.shareexact-chainsig-demo.testnet`, owned by `aa5hr.testnet`, with no access keys. It signs for `0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F` on Robinhood Chain testnet (46630). [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md) lists every transaction of the deployment and the demo, with hashes on both chains: a signed and broadcast transfer, and a request queued for approval and signed after the owner approved it. The refusal over the cap and the refusal while paused were caught by the agent's read-only `preview` call, so they have no transaction.
 
 To deploy your own instance, these are the steps, in order; deployment rules 1 and 2 in [SECURITY.md](SECURITY.md) are not optional.
 
