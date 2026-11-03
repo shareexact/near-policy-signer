@@ -71,7 +71,7 @@ On a single chain with account abstraction, a session key with an allowance modu
 
 ```mermaid
 flowchart LR
-  U[Instruction: send 3 MSHR to alice] --> P[AI planner<br/>NEAR AI Cloud or offline rules]
+  U[Instruction: send 0.0004 ETH to alice] --> P[AI planner<br/>NEAR AI Cloud or offline rules]
   P -->|untrusted proposal| A[Agent runtime<br/>reads token state at one block]
   A -->|request + observation<br/>function-call key| C[Policy contract on NEAR]
   C -->|refused: named reason, event| A
@@ -114,7 +114,7 @@ What it does not protect against, and what the operator must do (delete the cont
 | `cargo test` | `policy-signer` 95 passed, `mock-signer` 5 passed: every refusal, the approval queue, new recipients and look-alikes, pause and burn, the policy delay (ownership transfers included), native transfers, owner controls, the upgrade timelock, and transaction encoding |
 | `cd agent && npm ci && npm test` | 36 passed: planner, exact decimals, config validation, one-block reads, and signature assembly that recovers to the expected signer and refuses the wrong key, chain or nonce |
 | `cd agent && npm run vectors` | The two EIP-1559 test vectors, regenerated with viem, matching the sighashes asserted in the contract tests |
-| `cd dashboard && npm ci && npm run dev`, open the printed address, click **Demo data** | Today's budget per token, a queued 4-share request, a scheduled policy change, and the exact near-cli command the owner signs to approve it. With a deployed testnet contract, **Connect wallet (testnet)** lets the owner approve, reject, pause, burn and execute scheduled changes from a NEAR wallet (MyNearWallet, Meteor or HERE) |
+| `cd dashboard && npm ci && npm run dev`, open the printed address, click **Demo data** | Today's budget per token, a queued 4-share request, a scheduled policy change, and the exact near-cli command the owner signs to approve it. With a deployed testnet contract, **Connect wallet (testnet)** lets the owner approve, reject, pause, burn and execute scheduled changes from a NEAR wallet (MyNearWallet, Meteor or HERE); the Nov 2 owner calls were signed with the pages in `wallet-page*/` instead |
 
 The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workflows/ci.yml`) also builds the wasm with `cargo near build`.
 
@@ -142,6 +142,8 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
 | `dashboard/` | The owner console (Vite, NEAR Wallet Selector): reads the contract's views; owner actions are signed in the owner's own wallet, testnet only, or shown as near-cli commands. The page holds no key |
+| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/` | Single-file Meteor Wallet pages that signed the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
+| `DEPLOYMENT-TESTNET.md`, `USER-COMMANDS.md` | The testnet deployment: every transaction, and the commands used |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
 | `ROADMAP.md` | What comes after the hackathon |
 
@@ -219,7 +221,7 @@ To deploy your own instance, these are the steps, in order; deployment rules 1 a
 6. Give the agent account a function-call key for `request` on the contract, with a finite allowance (about 0.015 NEAR per request at 150 Tgas).
 7. Fund the contract with testnet NEAR for storage and 1 yoctoNEAR per signature.
 8. Find the contract's EVM address: `npm run cli -- address` (in `agent/`) calls the MPC contract's `derived_public_key` view with `{"path", "predecessor": <contract>, "domain_id": 0}` and converts the key. Fund it with Robinhood Chain testnet ETH.
-9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in (use an RPC endpoint from the NEAR docs' provider list; the public endpoints are rate limited), set `NEAR_AGENT_KEY`, and from `agent/` run `npm run cli -- preview "send 1 MSHR to alice"`, then `npm run cli -- send "send 1 MSHR to alice" --broadcast` once broadcasting is enabled in the config. Keep `requestGasTgas` at least the contract's sign gas plus 40; the agent checks this before sending.
+9. Copy `agent/agent.config.example.json` to `agent/agent.config.json`, fill it in (use an RPC endpoint from the NEAR docs' provider list; the public endpoints are rate limited), set `NEAR_AGENT_KEY`, and from `agent/` run `npm run cli -- preview "send 0.0004 ETH to alice"`, then `npm run cli -- send "send 0.0004 ETH to alice" --broadcast` once broadcasting is enabled in the config. Keep `requestGasTgas` at least the contract's sign gas plus 40; the agent checks this before sending.
 
 The MPC `sign` arguments (`{"request":{"payload_v2":{"Ecdsa":"<hex, no 0x>"},"path","domain_id":0}}`), the 1 yoctoNEAR deposit and the response shape match the `near/mpc` contract source. The deployment above used them against the live testnet signer.
 

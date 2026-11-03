@@ -16,6 +16,7 @@ result.json
 node_modules/
 agent/dist/
 agent/agent.config.json
+agent/agent.config.video.json
 
 # Console
 dashboard/dist/

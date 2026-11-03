@@ -18,6 +18,7 @@
   "mainnetChainIds": [4663],
   "allowMainnet": false,
   "tokens": [
+    { "symbol": "ETH", "chainId": 46630, "address": "0x0000000000000000000000000000000000000000", "kind": "Native", "decimals": 18 },
     { "symbol": "MSHR", "chainId": 46630, "address": "0x0000000000000000000000000000000000000001", "kind": "StockExact" }
   ],
   "recipients": [
