@@ -1465,6 +1465,45 @@ fn a_scheduled_change_can_be_cancelled_and_the_delay_itself_waits() {
 }
 
 #[test]
+fn an_ownership_transfer_waits_for_the_policy_delay_and_can_be_cancelled() {
+    // A stolen owner key must not be able to hand the contract to its holder
+    // before the real owner can react.
+    let mut c = setup();
+    with_policy_delay(&mut c, 3_600);
+    as_owner();
+    c.propose_owner(acct("thief.testnet"));
+    assert_eq!(c.get_config().proposed_owner, None, "not proposed yet");
+    let id = c.list_scheduled_changes()[0].id;
+
+    testing_env!(ctx("thief.testnet", NOW_S + 10, 1).build());
+    let early = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.accept_owner()));
+    assert!(early.is_err(), "cannot accept before the change executes");
+
+    as_owner_at(NOW_S + 60);
+    c.cancel_change(id);
+    assert!(c.list_scheduled_changes().is_empty());
+    assert_eq!(c.get_config().owner, acct(OWNER));
+}
+
+#[test]
+fn a_scheduled_ownership_transfer_completes_after_the_delay() {
+    let mut c = setup();
+    with_policy_delay(&mut c, 3_600);
+    as_owner();
+    c.propose_owner(acct("new-owner.testnet"));
+    let id = c.list_scheduled_changes()[0].id;
+    as_owner_at(NOW_S + 3_600);
+    c.execute_change(id);
+    assert_eq!(
+        c.get_config().proposed_owner,
+        Some(acct("new-owner.testnet"))
+    );
+    testing_env!(ctx("new-owner.testnet", NOW_S + 3_601, 1).build());
+    c.accept_owner();
+    assert_eq!(c.get_config().owner, acct("new-owner.testnet"));
+}
+
+#[test]
 fn every_policy_setter_emits_an_event() {
     let mut c = setup();
     let count = |name: &str| get_logs().iter().filter(|l| l.contains(name)).count();

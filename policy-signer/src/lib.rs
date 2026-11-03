@@ -146,6 +146,12 @@ pub enum PolicyChange {
         chain_id: u64,
         recipient: String,
     },
+    /// Proposing a new owner goes through the policy delay too, so a stolen
+    /// owner key cannot hand the contract to its holder before the real owner
+    /// can cancel. Appended last to keep the stored layout of earlier variants.
+    ProposeOwner {
+        new_owner: AccountId,
+    },
 }
 
 #[near(serializers = [borsh, json])]
@@ -838,12 +844,7 @@ impl PolicySigner {
     #[payable]
     pub fn propose_owner(&mut self, new_owner: AccountId) {
         self.assert_owner();
-        require!(
-            new_owner != env::current_account_id() && !self.agents.contains_key(&new_owner),
-            "owner must be a separate, non-agent account"
-        );
-        emit("owner_proposed", json!({ "to": new_owner }));
-        self.proposed_owner = Some(new_owner);
+        self.apply_or_schedule(PolicyChange::ProposeOwner { new_owner });
     }
 
     #[payable]
@@ -1108,6 +1109,10 @@ impl PolicySigner {
     /// valid when scheduled is checked again against the state it lands in.
     fn check_change(&self, change: &PolicyChange) {
         match change {
+            PolicyChange::ProposeOwner { new_owner } => require!(
+                *new_owner != env::current_account_id() && !self.agents.contains_key(new_owner),
+                "owner must be a separate, non-agent account"
+            ),
             PolicyChange::SetAgent { agent, .. } => require!(
                 *agent != env::current_account_id() && *agent != self.owner,
                 "an agent must be a separate account"
@@ -1233,6 +1238,10 @@ impl PolicySigner {
             } => {
                 self.tokens
                     .insert((chain_id, parse_or_panic(&token)), policy);
+            }
+            PolicyChange::ProposeOwner { new_owner } => {
+                emit("owner_proposed", json!({ "to": new_owner }));
+                self.proposed_owner = Some(new_owner);
             }
             PolicyChange::AllowRecipient {
                 chain_id,
