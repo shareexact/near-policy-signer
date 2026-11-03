@@ -4,15 +4,16 @@ import { privateKeyToAccount, sign } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import { Agent, type Chain } from "../src/agent.js";
 import { parseConfig } from "../src/config.js";
-import type { Outcome, PolicyClient, Preview, TransferRequest } from "../src/near.js";
+import type { Outcome, PolicyClient, Preview, RequestOutcome, TransferRequest } from "../src/near.js";
 import { rulePlanner } from "../src/planner.js";
 import { config, rawConfig, TOKEN } from "./fixtures.js";
 
+// Anvil/Hardhat default test account #1: a public test key, never funded on a real chain.
 const KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const contractKey = privateKeyToAccount(KEY);
 const mpcKey = `secp256k1:${bs58.encode(hexToBytes(contractKey.publicKey).slice(1))}`;
 
-function fakeNear(outcome: (r: TransferRequest) => Promise<Outcome>, preview: Partial<Preview> = {}, signGas = 50, nextNonce = 3) {
+function fakeNear(outcome: (r: TransferRequest) => Promise<RequestOutcome>, preview: Partial<Preview> = {}, signGas = 50, nextNonce = 3) {
   const calls: { method: string; args: unknown }[] = [];
   const client: PolicyClient = {
     async view<T>(method: string, args: object) {
@@ -170,14 +171,43 @@ describe("Agent", () => {
     expect(requested).toBe(false);
   });
 
-  it("refuses to broadcast where the config does not allow it", async () => {
+  it("refuses to broadcast where the config does not allow it, before anything is signed", async () => {
+    // A signature that cannot be broadcast would still use up a nonce and today's budget.
     const locked = parseConfig({ ...rawConfig, chains: { "46630": { rpcUrl: "https://x.example", allowBroadcast: false } } });
     const { chain, sent } = fakeChain();
-    const { client } = fakeNear((r) => signedOutcome(r));
+    let requested = false;
+    const { client, calls } = fakeNear((r) => {
+      requested = true;
+      return signedOutcome(r);
+    });
     await expect(new Agent(locked, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true })).rejects.toThrow(
       /not enabled/,
     );
+    expect(requested).toBe(false);
+    expect(calls.some((c) => c.method === "preview")).toBe(false);
     expect(sent).toHaveLength(0);
+  });
+
+  it("with skipPreview, submits the request without the preview and reports the contract's on-chain refusal", async () => {
+    let requested = false;
+    const { client, calls } = fakeNear(async () => {
+      requested = true;
+      return { status: "REFUSED", reason: "AmountCapExceeded", near_tx: "7Ab9" };
+    }, { decision: "REFUSED", refusal: "AmountCapExceeded" });
+    const res = await new Agent(config, client, () => fakeChain().chain, rulePlanner).send("send 9 MSHR to alice", {
+      broadcast: false,
+      skipPreview: true,
+    });
+    expect(res).toEqual({ kind: "refused", reason: "AmountCapExceeded", stage: "request", nearTx: "7Ab9" });
+    expect(requested).toBe(true);
+    expect(calls.some((c) => c.method === "preview")).toBe(false);
+  });
+
+  it("reports the NEAR transaction of a signed request", async () => {
+    const { chain } = fakeChain();
+    const { client } = fakeNear(async (r) => ({ ...(await signedOutcome(r)), near_tx: "9tbb" }));
+    const res = await new Agent(config, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true });
+    expect(res).toMatchObject({ kind: "signed", nearTx: "9tbb" });
   });
 
   it("passes an approved ticket through", async () => {

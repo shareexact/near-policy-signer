@@ -4,6 +4,7 @@ import { privateKeyToAccount, sign } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 import { addressFromMpcKey, assemble, readObservation } from "../src/evm.js";
 
+// Anvil/Hardhat default test account #1: a public test key, never funded on a real chain.
 const KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d" as const;
 const account = privateKeyToAccount(KEY);
 const UNSIGNED = serializeTransaction({

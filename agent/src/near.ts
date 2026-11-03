@@ -1,6 +1,7 @@
 // NEAR side: view calls, the agent's `request` call, and waiting for the
 // final outcome (the MPC call yields, so the result can take several blocks).
 import { Account, KeyPair, connect, keyStores, transactions } from "near-api-js";
+import bs58 from "bs58";
 import type { Observation } from "./evm.js";
 
 export interface Fees {
@@ -47,10 +48,13 @@ export interface Preview {
   is_replacement: boolean;
 }
 
+/** The contract's answer to `request`, with the NEAR transaction that carried it when known. */
+export type RequestOutcome = Outcome & { near_tx?: string };
+
 /** What the agent needs from NEAR. Implemented below; faked in tests. */
 export interface PolicyClient {
   view<T>(method: string, args: object): Promise<T>;
-  request(req: TransferRequest): Promise<Outcome>;
+  request(req: TransferRequest): Promise<RequestOutcome>;
   derivedPublicKey(): Promise<string>;
 }
 
@@ -108,7 +112,7 @@ export async function nearClient(s: NearSettings): Promise<PolicyClient> {
       await provider.sendTransactionUntil(signed as never, "INCLUDED");
       const outcome = await waitFinal(provider, hash, s.agentAccountId);
       if (stringStatus(outcome)) throw new Error(`transaction not final: ${String(outcome.status)}`);
-      return lastResult(outcome) as Outcome;
+      return { ...(lastResult(outcome) as Outcome), near_tx: bs58.encode(hash) };
     },
   };
 }

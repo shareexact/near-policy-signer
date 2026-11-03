@@ -4,12 +4,14 @@
 //   policy-agent status <SYMBOL>
 //   policy-agent plan "send 3 MSHR to alice"
 //   policy-agent preview "send 3 MSHR to alice"
-//   policy-agent send "send 3 MSHR to alice" [--ticket <id>] [--broadcast]
+//   policy-agent send "send 3 MSHR to alice" [--ticket <id>] [--broadcast] [--skip-preview]
+// --skip-preview submits `request` without the agent's own preview, as a compromised
+// agent would, to show that the contract refuses it on chain.
 // Environment: AGENT_CONFIG (default ./agent.config.json), NEAR_AGENT_KEY (send only),
 // NEAR_AI_API_KEY (only with planner.provider = "near-ai").
-import { type Hex, createPublicClient, http } from "viem";
-import { Agent, type Chain } from "./agent.js";
-import { findToken, loadConfig } from "./config.js";
+import { type Hex, createPublicClient, http, parseTransaction } from "viem";
+import { Agent, type Chain, type SendResult } from "./agent.js";
+import { type Config, findToken, loadConfig } from "./config.js";
 import { readObservation } from "./evm.js";
 import { nearClient } from "./near.js";
 import { nearAiPlanner, rulePlanner } from "./planner.js";
@@ -54,15 +56,38 @@ async function main(argv: string[]) {
     }
     case "send": {
       const ticket = option("--ticket");
-      return print(
-        await agent.send(text ?? fail("usage: send <instruction>"), {
-          broadcast: flag("--broadcast"),
-          ticketId: ticket ? Number(ticket) : undefined,
-        }),
-      );
+      const res = await agent.send(text ?? fail("usage: send <instruction>"), {
+        broadcast: flag("--broadcast"),
+        ticketId: ticket ? Number(ticket) : undefined,
+        skipPreview: flag("--skip-preview"),
+      });
+      return print({ ...res, links: links(config, res) });
     }
     default:
-      fail("commands: address | status <SYMBOL> | plan <text> | preview <text> | send <text> [--ticket N] [--broadcast]");
+      fail("commands: address | status <SYMBOL> | plan <text> | preview <text> | send <text> [--ticket N] [--broadcast] [--skip-preview]");
+  }
+}
+
+/** Explorer links for what a send produced: the NEAR transaction and the broadcast EVM transaction. */
+function links(config: Config, res: SendResult) {
+  const out: Record<string, string> = {};
+  if ("nearTx" in res && res.nearTx) {
+    const host = config.near.networkId === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io";
+    out.near = `${host}/txns/${res.nearTx}`;
+  }
+  if (res.kind === "signed" && res.broadcast) {
+    const base = config.chains[String(chainOf(config, res))]?.explorerTxUrl;
+    if (base) out.evm = `${base}${res.broadcast}`;
+  }
+  return out;
+}
+
+function chainOf(config: Config, res: SendResult & { kind: "signed" }) {
+  // The signed transaction carries its chain id; fall back to the only configured chain.
+  try {
+    return parseTransaction(res.signedTx).chainId ?? Number(Object.keys(config.chains)[0]);
+  } catch {
+    return Number(Object.keys(config.chains)[0]);
   }
 }
 

@@ -3,7 +3,7 @@
 import { type Hex, parseTransaction } from "viem";
 import { type Config } from "./config.js";
 import { type MpcSignature, type Observation, addressFromMpcKey, assemble } from "./evm.js";
-import type { Outcome, PolicyClient, Preview, TransferRequest } from "./near.js";
+import type { PolicyClient, Preview, RequestOutcome, TransferRequest } from "./near.js";
 import { type Planner, checkProposal } from "./planner.js";
 import { parseAmount } from "./units.js";
 
@@ -15,13 +15,21 @@ export interface Chain {
 export interface SendOptions {
   broadcast: boolean;
   ticketId?: number;
+  /**
+   * Skip the agent's own read-only preview and submit `request` directly, as a
+   * compromised agent would. The contract applies the same checks and records a
+   * refusal on chain as a `refused` event. For demonstrations and tests.
+   */
+  skipPreview?: boolean;
 }
 
+/** `nearTx` is the NEAR transaction that carried `request`; absent for a preview refusal. */
 export type SendResult =
-  | { kind: "refused"; reason: string; stage: "preview" | "request" }
-  | { kind: "queued"; ticketId: number; expiresAt: number }
-  | { kind: "sign_failed"; error: string }
-  | { kind: "signed"; signedTx: Hex; hash: Hex; signer: Hex; broadcast: Hex | null };
+  | { kind: "refused"; reason: string; stage: "preview" }
+  | { kind: "refused"; reason: string; stage: "request"; nearTx?: string }
+  | { kind: "queued"; ticketId: number; expiresAt: number; nearTx?: string }
+  | { kind: "sign_failed"; error: string; nearTx?: string }
+  | { kind: "signed"; signedTx: Hex; hash: Hex; signer: Hex; broadcast: Hex | null; nearTx?: string };
 
 export class Agent {
   constructor(
@@ -74,17 +82,23 @@ export class Agent {
       );
     }
     const req = await this.buildRequest(instruction, opts.ticketId);
-    const preview = await this.preview(req);
-    if (preview.decision === "REFUSED") return { kind: "refused", reason: preview.refusal ?? "unknown", stage: "preview" };
+    // Check broadcasting is allowed before anything is signed: a signature that
+    // cannot be broadcast still uses up a nonce and today's budget.
+    if (opts.broadcast) this.assertMayBroadcast(req.chain_id);
+    if (!opts.skipPreview) {
+      const preview = await this.preview(req);
+      if (preview.decision === "REFUSED") return { kind: "refused", reason: preview.refusal ?? "unknown", stage: "preview" };
+    }
 
-    const outcome: Outcome = await this.near.request(req);
+    const outcome: RequestOutcome = await this.near.request(req);
+    const nearTx = outcome.near_tx;
     switch (outcome.status) {
       case "REFUSED":
-        return { kind: "refused", reason: outcome.reason, stage: "request" };
+        return { kind: "refused", reason: outcome.reason, stage: "request", nearTx };
       case "PENDING_APPROVAL":
-        return { kind: "queued", ticketId: outcome.ticket_id, expiresAt: outcome.expires_at };
+        return { kind: "queued", ticketId: outcome.ticket_id, expiresAt: outcome.expires_at, nearTx };
       case "SIGN_FAILED":
-        return { kind: "sign_failed", error: outcome.error };
+        return { kind: "sign_failed", error: outcome.error, nearTx };
       case "SIGNED": {
         const expected = await this.evmAddress();
         const a = await assemble(outcome.unsigned_tx, outcome.sighash, outcome.signature as MpcSignature, expected);
@@ -101,7 +115,7 @@ export class Agent {
           this.assertMayBroadcast(outcome.chain_id);
           sent = await this.chains(outcome.chain_id).broadcast(a.signedTx);
         }
-        return { kind: "signed", signedTx: a.signedTx, hash: a.hash, signer: a.signer, broadcast: sent };
+        return { kind: "signed", signedTx: a.signedTx, hash: a.hash, signer: a.signer, broadcast: sent, nearTx };
       }
     }
   }
