@@ -51,6 +51,7 @@ All times are MST (UTC-7) on Mon Nov 2 2026. Every hash below was re-read on RPC
 | 23 (8.5) | 5:04:25 PM | NEAR | `7Gvoi8dei739fGF5XaR7aMYr3UZ2NeRiSkucpPp6Pttp` | aa5hr.testnet (9k4y..., Meteor) | `set_paused` true | SuccessValue, block 275971480 |
 | 24 (8.5) | about 5:06 PM | none | no transaction | agent CLI | `send 0.0004 ETH` while paused: refused `Paused` at the read-only preview; agent key nonce unchanged | refused, nothing signed |
 | 25 (8.5) | 5:07:29 PM | NEAR | `GAJySQeS5z5ZcruUHMoFMv1jzELcfp1FWXsTo6SFeTx4` | aa5hr.testnet (9k4y..., Meteor) | `set_paused` false | SuccessValue, block 275971796 |
+| 26 | Tue Nov 3 | NEAR | `CJ7H1U4jcRGWPANrJ4uKMLXeUfW1JvATUhwH2SKqhw2E` | aa5hr.testnet (9k4y..., Meteor) | `set_chain` 46630 with `exact_transfer` null, every other field unchanged ([`wallet-page-chain-fix/`](wallet-page-chain-fix/)); see open item 3 | signed in Meteor; get_chain then read `exact_transfer: null`, other fields unchanged |
 
 Explorer links: NEAR `https://testnet.nearblocks.io/txns/<hash>`, 46630 `https://explorer.testnet.chain.robinhood.com/tx/<hash>`.
 
@@ -102,5 +103,6 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
 2. `allowBroadcast` is `false` for 46630 in the testnet config; enable it only for a planned demo.
 3. `exact_transfer` on chain 46630 is `0x2cbaedbf8bf46600cf311c7065f901aad973fd8e`, which is not ShareExact's `ExactTransfer`; no
    `ExactTransfer` is deployed on Robinhood Chain testnet. It has no effect on this deployment, which registers only native ETH.
-   It is to be cleared with one owner call, `set_chain` with `exact_transfer: null` and every other field unchanged, signed in
-   [`wallet-page-chain-fix/`](wallet-page-chain-fix/). Once cleared, the contract refuses to register a `StockExact` token on 46630.
+   It was cleared on Nov 3 by transaction 26, one owner call, `set_chain` with `exact_transfer: null` and every other field
+   unchanged, signed in [`wallet-page-chain-fix/`](wallet-page-chain-fix/). The contract now refuses to register a `StockExact`
+   token on 46630.
