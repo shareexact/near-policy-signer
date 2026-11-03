@@ -12,6 +12,7 @@ Deployed ids and hashes: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 | B1 to B4 | policy-v1, agent-v1 (temporary keys) | CLI | deploy + `new`, delete the contract's key, add the agent's function-call key, delete the agent's full-access key |
 | U3 (4 calls) | aa5hr.testnet | Meteor, [`wallet-page/`](wallet-page/) | `add_agent`, `set_chain`, `set_token`, `set_recipient` |
 | Step 8 owner calls | aa5hr.testnet | Meteor, [`wallet-page-owner-demo/`](wallet-page-owner-demo/) | `approve_ticket`, `set_paused true`, `set_paused false` |
+| Chain policy fix | aa5hr.testnet | Meteor, [`wallet-page-chain-fix/`](wallet-page-chain-fix/) | `set_chain` 46630 with `exact_transfer` cleared |
 | Agent requests | agent-v1 (function-call key, method `request` only) | agent CLI | `request` |
 
 Why the accounts are not sub-accounts of the owner: creating `*.aa5hr.testnet` needs aa5hr.testnet to sign a CreateAccount
@@ -38,6 +39,7 @@ Shared locks, enforced before any request reaches the wallet:
 |---|---|---|
 | `wallet-page/` | `7022bb58e93625fac398a9d5e283b5666ba5c8e230f19dbc610f79c8c0594c02` | U3 x4 in one batch, or U3.1 to U3.4 one at a time |
 | `wallet-page-owner-demo/` | `567ef6dcde2dee624eac46d546c08b6ff3a202e96be6d917ff905fda99958b47` | Approve ticket 1, Pause, Resume (one transaction each, each with its own on-chain lock) |
+| `wallet-page-chain-fix/` | `54cc590ad478c67ef0341c54c4dfc632f4a99be3618c79d5b7bd5fde13c1c6b9` | Clear `exact_transfer` (one transaction, unlocked only while it is still set and the rest of the chain policy is unchanged) |
 
 Rebuilding from `src/` gives the same sha256. Each folder's README lists the exact arguments.
 
@@ -48,4 +50,4 @@ transactions the Meteor SDK hands to the extension and then rejects them, so not
 transaction is decoded with an independent library (near-api-js 0.45.1) and compared field by field, and byte for byte after
 normalising the live nonce and block hash, with the unsigned transactions in `test/fixtures/`. The tests also cover the locks
 (wrong code hash, leftover key, missing account, wrong owner, ticket not pending), a wrong connected account, and forced
-clicks on disabled buttons. They read aa5hr.testnet's current nonce from rpc.testnet.near.org, so they need network access.
+clicks on disabled buttons. The tests of `wallet-page/` and `wallet-page-owner-demo/` read aa5hr.testnet's current nonce from rpc.testnet.near.org, so they need network access; the test of `wallet-page-chain-fix/` mocks every RPC call and runs offline.

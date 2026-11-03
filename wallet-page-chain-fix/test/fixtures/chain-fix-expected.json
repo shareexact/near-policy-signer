@@ -1,0 +1,7 @@
+{
+ "note": "nonce 1 and a zero block hash; the test normalises both",
+ "args": "{\"chain_id\":46630,\"policy\":{\"max_fee_per_gas\":\"1000000000\",\"max_priority_fee_per_gas\":\"100000000\",\"max_gas_limit\":\"200000\",\"exact_transfer\":null,\"unknown_recipients_need_approval\":true}}",
+ "tx": {
+  "f1_set_chain": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAACoAAABwb2xpY3ktdjEuc2hhcmVleGFjdC1jaGFpbnNpZy1kZW1vLnRlc3RuZXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACCQAAAHNldF9jaGFpbroAAAB7ImNoYWluX2lkIjo0NjYzMCwicG9saWN5Ijp7Im1heF9mZWVfcGVyX2dhcyI6IjEwMDAwMDAwMDAiLCJtYXhfcHJpb3JpdHlfZmVlX3Blcl9nYXMiOiIxMDAwMDAwMDAiLCJtYXhfZ2FzX2xpbWl0IjoiMjAwMDAwIiwiZXhhY3RfdHJhbnNmZXIiOm51bGwsInVua25vd25fcmVjaXBpZW50c19uZWVkX2FwcHJvdmFsIjp0cnVlfX0A4FfrSBsAAAEAAAAAAAAAAAAAAAAAAAA="
+ }
+}

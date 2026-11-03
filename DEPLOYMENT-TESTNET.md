@@ -37,7 +37,7 @@ All times are MST (UTC-7) on Mon Nov 2 2026. Every hash below was re-read on RPC
 | 9 (B4) | 3:12:22 PM | NEAR | `46GsdcwHBLJhsJN23ygkj23ct1XzEsWcLVizd8KqF5Wg` | agent-v1 (key 2) | DeleteKey key 2: only FC key 3 remains | SuccessValue, block 275959765 |
 | 10 | 3:34:29 PM | NEAR | `HyYhJEpTQuPpY3LQrhWpmeR3jxu4bjQWXuoFWsjwgy3A` | aa5hr.testnet (9k4y...) | AddKey full access `ed25519:CY9aCwrmVaPMzMJLbxAxFGwGhEKgSgar5UKuVqLGZcaQ` on the owner account. Not part of the deployment; see open items | SuccessValue, block 275962123 |
 | 11 (U3.1) | 3:41:28 PM | NEAR | `7AqrT3EwKu3QHUaQRWmDjkPCZ7mJJLqiuLvSTjG2f6mL` | aa5hr.testnet (9k4y..., Meteor) | `add_agent` agent-v1 (demo agent, 20/day) | SuccessValue, block 275962857 |
-| 12 (U3.2) | 3:41:30 PM | NEAR | `7jqR9iNXJw9WD6xi1fhbFJ3Qij9aeWUtcVFWU8yMjgH4` | aa5hr.testnet (9k4y...) | `set_chain` 46630 (max fee 1 gwei, tip 0.1 gwei, gas 200000, ExactTransfer, unknown recipients need approval) | SuccessValue, block 275962861 |
+| 12 (U3.2) | 3:41:30 PM | NEAR | `7jqR9iNXJw9WD6xi1fhbFJ3Qij9aeWUtcVFWU8yMjgH4` | aa5hr.testnet (9k4y...) | `set_chain` 46630 (max fee 1 gwei, tip 0.1 gwei, gas 200000, `exact_transfer` `0x2cbaedbf...fd8e`, unknown recipients need approval; that address is not an ExactTransfer, see open item 3) | SuccessValue, block 275962861 |
 | 13 (U3.3) | 3:41:32 PM | NEAR | `C15zkaqLfkeBZiWseuF9QXF2CtfsLaAtGjQe5mhd8SfV` | aa5hr.testnet (9k4y...) | `set_token` native ETH (1e15 per request, 5e15 per day, approval above 5e14) | SuccessValue, block 275962864 |
 | 14 (U3.4) | 3:41:34 PM | NEAR | `HEDWxNHvjbfyiHwPPSK9r7BaMdmpZnhKWrXXaM4sRL1Q` | aa5hr.testnet (9k4y...) | `set_recipient` alice allowed | SuccessValue, block 275962867 |
 | 15 | 3:46:33 PM | 46630 | `0xc902a98e99402231ad7338ad3ef8b426b81b520d6c3e40ee147c9ab9d3f8a68b` | deployer 0x0C7F...0490 (nonce 8) | Fund 0xc86A with 0.0018 ETH | status 0x1, block 147325820, gasUsed 21000, price 10000000 wei |
@@ -100,3 +100,7 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
    added at 3:34:29 PM by `HyYhJEpTQuPpY3LQrhWpmeR3jxu4bjQWXuoFWsjwgy3A`. No transaction in this deployment was signed with it
    (all owner transactions used `ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf`). It is scheduled for removal.
 2. `allowBroadcast` is `false` for 46630 in the testnet config; enable it only for a planned demo.
+3. `exact_transfer` on chain 46630 is `0x2cbaedbf8bf46600cf311c7065f901aad973fd8e`, which is not ShareExact's `ExactTransfer`; no
+   `ExactTransfer` is deployed on Robinhood Chain testnet. It has no effect on this deployment, which registers only native ETH.
+   It is to be cleared with one owner call, `set_chain` with `exact_transfer: null` and every other field unchanged, signed in
+   [`wallet-page-chain-fix/`](wallet-page-chain-fix/). Once cleared, the contract refuses to register a `StockExact` token on 46630.
