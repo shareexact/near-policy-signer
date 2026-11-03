@@ -8,6 +8,7 @@
 // --skip-preview submits `request` without the agent's own preview, as a compromised
 // agent would, to show that the contract refuses it on chain.
 // Environment: AGENT_CONFIG (default ./agent.config.json), NEAR_AGENT_KEY (send only),
+// NEAR_RPC_URL (optional, overrides near.rpcUrl),
 // NEAR_AI_API_KEY (only with planner.provider = "near-ai").
 import { type Hex, createPublicClient, http, parseTransaction } from "viem";
 import { Agent, type Chain, type SendResult } from "./agent.js";
@@ -20,7 +21,12 @@ async function main(argv: string[]) {
   const [command, text] = argv;
   const config = loadConfig(process.env.AGENT_CONFIG ?? "agent.config.json");
   // Only `send` needs the agent's key; address, status, plan and preview are read-only.
-  const near = await nearClient({ ...config.near, agentKey: process.env.NEAR_AGENT_KEY });
+  // NEAR_RPC_URL overrides the config's RPC endpoint (public endpoints are rate limited).
+  const near = await nearClient({
+    ...config.near,
+    rpcUrl: process.env.NEAR_RPC_URL ?? config.near.rpcUrl,
+    agentKey: process.env.NEAR_AGENT_KEY,
+  });
   const chains = (chainId: number): Chain => {
     const c = config.chains[String(chainId)];
     if (!c) throw new Error(`chain ${chainId} is not configured`);

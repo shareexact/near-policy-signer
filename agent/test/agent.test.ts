@@ -139,6 +139,15 @@ describe("Agent", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("refuses a signed transaction the contract reports for another chain", async () => {
+    const { chain, sent } = fakeChain();
+    const { client } = fakeNear(async (r) => ({ ...(await signedOutcome(r)), chain_id: 1 }));
+    await expect(
+      new Agent(config, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true }),
+    ).rejects.toThrow(/not the request's/);
+    expect(sent).toHaveLength(0);
+  });
+
   it("refuses a signed transaction for another nonce", async () => {
     const { chain, sent } = fakeChain();
     const { client } = fakeNear((r) => signedOutcome({ ...r, fees: { ...r.fees, evm_nonce: r.fees.evm_nonce + 1 } }));
