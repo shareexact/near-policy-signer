@@ -90,9 +90,11 @@ export class Agent {
         const a = await assemble(outcome.unsigned_tx, outcome.sighash, outcome.signature as MpcSignature, expected);
         // The contract built the transaction; still check it is for the chain
         // and nonce this agent asked for before it can be broadcast.
+        // viem's parseTransaction leaves `nonce` undefined when the RLP field is empty, i.e. nonce 0.
         const tx = parseTransaction(a.signedTx);
-        if (tx.chainId !== req.chain_id || outcome.chain_id !== req.chain_id || tx.nonce !== req.fees.evm_nonce) {
-          throw new Error(`signed transaction is for chain ${tx.chainId} nonce ${tx.nonce}, not the request's`);
+        const txNonce = tx.nonce ?? 0;
+        if (tx.chainId !== req.chain_id || outcome.chain_id !== req.chain_id || txNonce !== req.fees.evm_nonce) {
+          throw new Error(`signed transaction is for chain ${tx.chainId} nonce ${txNonce}, not the request's`);
         }
         let sent: Hex | null = null;
         if (opts.broadcast) {

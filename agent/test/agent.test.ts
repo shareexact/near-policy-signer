@@ -12,12 +12,12 @@ const KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
 const contractKey = privateKeyToAccount(KEY);
 const mpcKey = `secp256k1:${bs58.encode(hexToBytes(contractKey.publicKey).slice(1))}`;
 
-function fakeNear(outcome: (r: TransferRequest) => Promise<Outcome>, preview: Partial<Preview> = {}, signGas = 50) {
+function fakeNear(outcome: (r: TransferRequest) => Promise<Outcome>, preview: Partial<Preview> = {}, signGas = 50, nextNonce = 3) {
   const calls: { method: string; args: unknown }[] = [];
   const client: PolicyClient = {
     async view<T>(method: string, args: object) {
       calls.push({ method, args });
-      if (method === "get_nonce_state") return { next: 3 } as T;
+      if (method === "get_nonce_state") return { next: nextNonce } as T;
       if (method === "get_config") return { sign_gas_tgas: signGas } as T;
       if (method === "preview") return { decision: "SIGN", refusal: null, ...preview } as T;
       throw new Error(method);
@@ -115,6 +115,26 @@ describe("Agent", () => {
     await expect(
       new Agent(config, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true }),
     ).rejects.toThrow(/recovers to/);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("accepts and broadcasts a signed transaction for nonce 0", async () => {
+    // viem's parseTransaction leaves `nonce` undefined when the RLP nonce is 0 (the first
+    // transaction from a fresh derived address); that must still match evm_nonce 0.
+    const { chain, sent } = fakeChain();
+    const { client } = fakeNear((r) => signedOutcome(r), {}, 50, 0);
+    const agent = new Agent(config, client, () => chain, rulePlanner);
+    const res = await agent.send("send 1 MSHR to alice", { broadcast: true });
+    expect(res).toMatchObject({ kind: "signed", signer: contractKey.address });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("refuses a signed transaction for nonce 1 when the request asked for nonce 0", async () => {
+    const { chain, sent } = fakeChain();
+    const { client } = fakeNear((r) => signedOutcome({ ...r, fees: { ...r.fees, evm_nonce: r.fees.evm_nonce + 1 } }), {}, 50, 0);
+    await expect(
+      new Agent(config, client, () => chain, rulePlanner).send("send 1 MSHR to alice", { broadcast: true }),
+    ).rejects.toThrow(/not the request's/);
     expect(sent).toHaveLength(0);
   });
 
