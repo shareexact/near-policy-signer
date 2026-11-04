@@ -142,7 +142,7 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
 | `dashboard/` | The owner console (Vite, NEAR Wallet Selector): reads the contract's views; owner actions are signed in the owner's own wallet, testnet only, or shown as near-cli commands. The page holds no key |
-| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/` | Single-file Meteor Wallet pages that signed the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
+| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/`, `wallet-page-upgrade/` | Single-file Meteor Wallet pages for the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
 | `DEPLOYMENT-TESTNET.md`, `USER-COMMANDS.md` | The testnet deployment: every transaction, and the commands used |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
 | `ROADMAP.md` | What comes after the hackathon |

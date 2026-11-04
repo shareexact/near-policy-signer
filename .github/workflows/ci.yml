@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        page: [wallet-page, wallet-page-owner-demo, wallet-page-chain-fix]
+        page: [wallet-page, wallet-page-owner-demo, wallet-page-chain-fix, wallet-page-upgrade]
     defaults:
       run:
         working-directory: ${{ matrix.page }}

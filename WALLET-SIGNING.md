@@ -13,6 +13,7 @@ Deployed ids and hashes: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 | U3 (4 calls) | aa5hr.testnet | Meteor, [`wallet-page/`](wallet-page/) | `add_agent`, `set_chain`, `set_token`, `set_recipient` |
 | Step 8 owner calls | aa5hr.testnet | Meteor, [`wallet-page-owner-demo/`](wallet-page-owner-demo/) | `approve_ticket`, `set_paused true`, `set_paused false` |
 | Chain policy fix | aa5hr.testnet | Meteor, [`wallet-page-chain-fix/`](wallet-page-chain-fix/) | `set_chain` 46630 with `exact_transfer` cleared |
+| Upgrade to the current code, then the policy delay | aa5hr.testnet | Meteor, [`wallet-page-upgrade/`](wallet-page-upgrade/) | `propose_upgrade`, `apply_upgrade` after 48 hours, `set_params` with `policy_delay_s` 3600 |
 | Agent requests | agent-v1 (function-call key, method `request` only) | agent CLI | `request` |
 
 Why the accounts are not sub-accounts of the owner: creating `*.aa5hr.testnet` needs aa5hr.testnet to sign a CreateAccount
@@ -39,6 +40,7 @@ Shared locks, enforced before any request reaches the wallet:
 |---|---|---|
 | `wallet-page/` | `7022bb58e93625fac398a9d5e283b5666ba5c8e230f19dbc610f79c8c0594c02` | U3 x4 in one batch, or U3.1 to U3.4 one at a time |
 | `wallet-page-owner-demo/` | `567ef6dcde2dee624eac46d546c08b6ff3a202e96be6d917ff905fda99958b47` | Approve ticket 1, Pause, Resume (one transaction each, each with its own on-chain lock) |
+| `wallet-page-upgrade/` | `035e5d7595df3e0dde7b748ae815c7a36e6fcc9dbc6b8154a71f78a524247d40` | Propose, apply (with the reproducible wasm served next to it, checked in the browser), turn on the policy delay; each with its own on-chain lock |
 | `wallet-page-chain-fix/` | `54cc590ad478c67ef0341c54c4dfc632f4a99be3618c79d5b7bd5fde13c1c6b9` | Clear `exact_transfer` (one transaction, unlocked only while it is still set and the rest of the chain policy is unchanged) |
 
 Rebuilding from `src/` gives the same sha256. Each folder's README lists the exact arguments.
@@ -50,4 +52,4 @@ transactions the Meteor SDK hands to the extension and then rejects them, so not
 transaction is decoded with an independent library (near-api-js 0.45.1) and compared field by field, and byte for byte after
 normalising the live nonce and block hash, with the unsigned transactions in `test/fixtures/`. The tests also cover the locks
 (wrong code hash, leftover key, missing account, wrong owner, ticket not pending), a wrong connected account, and forced
-clicks on disabled buttons. Every RPC call in the three tests is answered offline (the contract's views, aa5hr.testnet's key and the latest block), so they need no network, and CI runs all three, each after checking that a rebuild gives the committed page byte for byte.
+clicks on disabled buttons. Every RPC call in the four tests is answered offline (the contract's views, aa5hr.testnet's key and the latest block), so they need no network, and CI runs all four, each after checking that a rebuild gives the committed page byte for byte.

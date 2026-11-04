@@ -1,0 +1,11 @@
+{
+ "note": "nonce 1 and a zero block hash; the test normalises both",
+ "code_sha256": "c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a",
+ "code_hash_b58": "E1xgsbWL3TwTefBKFAUdLoKiuYME2zEw938T8ycsnbPF",
+ "args": "{\"code_hash\":\"c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a\"}",
+ "delay_args": "{\"params\":{\"max_observation_age_s\":120,\"max_clock_skew_s\":15,\"corp_action_window_s\":7200,\"max_requests_per_day\":50,\"pending_ticket_ttl_s\":86400,\"approved_ticket_ttl_s\":900,\"max_open_tickets\":20,\"upgrade_delay_s\":172800,\"policy_delay_s\":3600}}",
+ "tx": {
+  "propose": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAACoAAABwb2xpY3ktdjEuc2hhcmVleGFjdC1jaGFpbnNpZy1kZW1vLnRlc3RuZXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACDwAAAHByb3Bvc2VfdXBncmFkZVAAAAB7ImNvZGVfaGFzaCI6ImMxNjZlNTYzNWQ4ZGY2ZDI1NTI4YWNmYTYxMWM4ZWU4MTIyODY1MGRjZWQwYjJmNmE5ODZlZjY2ODdkOTVlNWEifQDgV+tIGwAAAQAAAAAAAAAAAAAAAAAAAA==",
+  "set_delay": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAACoAAABwb2xpY3ktdjEuc2hhcmVleGFjdC1jaGFpbnNpZy1kZW1vLnRlc3RuZXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACCgAAAHNldF9wYXJhbXPyAAAAeyJwYXJhbXMiOnsibWF4X29ic2VydmF0aW9uX2FnZV9zIjoxMjAsIm1heF9jbG9ja19za2V3X3MiOjE1LCJjb3JwX2FjdGlvbl93aW5kb3dfcyI6NzIwMCwibWF4X3JlcXVlc3RzX3Blcl9kYXkiOjUwLCJwZW5kaW5nX3RpY2tldF90dGxfcyI6ODY0MDAsImFwcHJvdmVkX3RpY2tldF90dGxfcyI6OTAwLCJtYXhfb3Blbl90aWNrZXRzIjoyMCwidXBncmFkZV9kZWxheV9zIjoxNzI4MDAsInBvbGljeV9kZWxheV9zIjozNjAwfX0A4FfrSBsAAAEAAAAAAAAAAAAAAAAAAAA="
+ }
+}

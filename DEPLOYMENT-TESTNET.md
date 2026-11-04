@@ -2,7 +2,7 @@
 
 The contract at commit 88e06a6 is deployed on NEAR testnet and drives native ETH transfers on Robinhood Chain testnet
 (chain id 46630) through the NEAR MPC signer. Testnet only; no mainnet account or chain was used.
-All times are MST (UTC-7) on Mon Nov 2 2026. Every hash below was re-read on RPC after the run; all are final and successful.
+All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every hash in rows 1 to 25 was re-read on RPC after the run; all are final and successful. Row 26 was signed on Nov 3 from the owner page, which then read `get_chain` back (see open item 3).
 
 - Contract wasm: built from this commit with `cargo near build non-reproducible-wasm` (sha256 of the local build
   `6b903d6c47211006de2885f4a146f918da5d399695d48d1988742687a70e81c6`); on-chain code_hash `8EtC2o7j51xd7ESB6vJJLCA18CPytCcmZ6HETqcSPows`.
@@ -94,6 +94,7 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
    (hash, recovered signer, chain id, nonce, value, recipient, account nonce) and broadcast once with `eth_sendRawTransaction`.
    No second signature was requested.
 4. Owner calls used 30 Tgas each (the console uses 100 Tgas); all succeeded.
+5. #22 was broadcast by the agent CLI itself (`send ... --ticket 1 --broadcast`), with `allowBroadcast` set to true for the run as USER-COMMANDS.md describes and set back to false afterwards, which is how the committed config reads.
 
 ## Open items
 
@@ -101,8 +102,9 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
    added at 3:34:29 PM by `HyYhJEpTQuPpY3LQrhWpmeR3jxu4bjQWXuoFWsjwgy3A`. No transaction in this deployment was signed with it
    (all owner transactions used `ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf`). It is scheduled for removal.
 2. `allowBroadcast` is `false` for 46630 in the testnet config; enable it only for a planned demo.
-3. `exact_transfer` on chain 46630 is `0x2cbaedbf8bf46600cf311c7065f901aad973fd8e`, which is not ShareExact's `ExactTransfer`; no
-   `ExactTransfer` is deployed on Robinhood Chain testnet. It has no effect on this deployment, which registers only native ETH.
-   It was cleared on Nov 3 by transaction 26, one owner call, `set_chain` with `exact_transfer: null` and every other field
+3. `exact_transfer` on chain 46630 was set on Nov 2 to `0x2cbaedbf8bf46600cf311c7065f901aad973fd8e`, which is not ShareExact's
+   `ExactTransfer`; no `ExactTransfer` is deployed on Robinhood Chain testnet. It had no effect on this deployment, which registers
+   only native ETH. It was cleared on Nov 3 by transaction 26, one owner call, `set_chain` with `exact_transfer: null` and every other field
    unchanged, signed in [`wallet-page-chain-fix/`](wallet-page-chain-fix/). The contract now refuses to register a `StockExact`
    token on 46630.
+4. Upgrade to the current code. The deployment runs 88e06a6, from before `propose_owner` went through the policy delay. The upgrade goes through the contract's own timelock with [`wallet-page-upgrade/`](wallet-page-upgrade/): `propose_upgrade` for the reproducible build of commit a3ac91e (release `policy-signer-wasm-a3ac91e`, sha256 `c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a`), `apply_upgrade` at least 48 hours later, then `set_params` with `policy_delay_s` 3600. Each transaction is added to the table above when signed.
