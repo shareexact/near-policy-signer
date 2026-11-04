@@ -1,12 +1,12 @@
 # Policy Signer
 
-**A spending firewall for AI agents that move money on EVM chains, built on NEAR Chain Signatures.** The agent gets a budget, not a wallet key. Live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet; ERC-20 and Stock Token transfers are implemented and unit-tested.
+**A budget, not a wallet key.** A NEAR contract gets an AI agent's EVM transfers signed through Chain Signatures, and only inside the owner's limits.
 
-An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key at all. It holds a NEAR function-call key that can do one thing: ask a NEAR contract to send a transfer. The contract builds the exact EVM transaction itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign it. **The payload signed is exactly the payload checked.** Large transfers wait for a human. Anything outside the policy is refused with a named reason and nothing is signed; when the agent submits the request, the refusal is logged on chain as an event.
+An agent that holds a private key will eventually send the wrong amount, to the wrong address, at the wrong moment. Here the agent holds no EVM key. Its only key is a NEAR function-call key for one method, `request`. The contract builds the exact EVM transaction, checks it against the owner's policy, and only then asks the NEAR MPC network to sign. **The payload signed is exactly the payload checked.** Large transfers wait for the owner. Anything outside the policy is refused with a named reason, nothing is signed, and a submitted refusal is logged on chain.
 
-**Why NEAR:** on NEAR, a contract can control an address on another chain through Chain Signatures. Here that contract is the spending policy itself: nobody holds the EVM key, and the contract asks the MPC network to sign only transactions it built itself: agent transfers that passed the policy, and the owner's nonce burns and token approvals.
+**Why NEAR:** with Chain Signatures, a contract can control an address on another chain. Here that contract is the policy, and its account has no keys, so nobody holds the agent's EVM key. It asks for signatures only on transactions it built: agent transfers that passed the policy, plus the owner's nonce burns and token approvals.
 
-Built at the NEAR HACKATHON (November 2026), tracks AI Security & Defense (`security`) and Agent Economy (`agents`).
+**Status:** live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet. ERC-20 and Stock Token transfers are implemented and unit-tested. Testnet only, not audited. Built at the NEAR HACKATHON (November 2026), tracks AI Security & Defense (`security`) and Agent Economy (`agents`).
 
 ## For NEAR HACKATHON judges (2 minutes)
 
@@ -52,7 +52,7 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
 | Implemented, unit-tested only | ERC-20 (`Plain`) and Stock Token (`StockExact`, `StockDirect`) kinds; the policy delay, which now also covers `propose_owner` (not yet on the testnet deployment, which runs 88e06a6); nonce burns and fee bumps; the upgrade timelock; the NEAR AI Cloud planner (tested against a mock; the testnet demo used the rule-based planner) |
 | Planned | Sandbox integration tests with `mock-signer`, alerts and agent packages: [ROADMAP.md](ROADMAP.md) |
 
-**Known limits** ([SECURITY.md](SECURITY.md)): testnet only, not audited. Signed transactions do not expire until their nonce is used or burned. Daily caps reset at 00:00 UTC. **The owner is one NEAR account and the root of trust:** with the policy delay at 0 (the default, and this deployment) a stolen owner key can at once register its own agent and recipient, raise caps and drain the derived address, or make itself owner and lock the real owner out. With a delay set, loosening and ownership transfers wait and can be cancelled (the ownership part needs code newer than the deployed 88e06a6); resume, ticket approvals, burns, token approvals and `disable_upgrades` stay immediate. Upgrades always wait at least 48 hours. Signing relies on the NEAR MPC network's threshold security.
+**Known limits** ([SECURITY.md](SECURITY.md)): testnet only, not audited. Signed transactions do not expire until their nonce is used or burned. Daily caps reset at 00:00 UTC. **The owner is one NEAR account and the root of trust:** with the policy delay at 0 (the default, and this deployment) a stolen owner key can at once register its own agent and recipient, raise caps and drain the derived address, or make itself owner and lock the real owner out. With a delay set, loosening and ownership transfers are announced and wait, and the owner can cancel them, but only while the real owner still controls the owner account: a stolen full-access key can also delete that account's other keys, so in production make the owner a multisig or DAO contract account (the ownership part also needs code newer than the deployed 88e06a6). Resume, ticket approvals, burns, token approvals and `disable_upgrades` stay immediate. Upgrades always wait at least 48 hours, with the same caveat. Signing relies on the NEAR MPC network's threshold security.
 
 **Built in the window:** all code here was written after the 2026-10-19 announcement (first commit 2026-10-31). `StockExact` tokens call ShareExact's `ExactTransfer`, an earlier MIT project by the same author that is not part of this entry ([details](#relationship-to-shareexact)). Parts of the code were written with AI coding assistance.
 
@@ -62,9 +62,9 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
 |---|---|---|
 | A small hot wallet for the agent | The key can leak or be talked out of the agent; it signs any amount to any address; no approval step, no pause | No EVM key for the agent to leak; its NEAR key can only call `request`; allowlists, caps, an approval queue and pause, enforced by the contract |
 | An agent in a TEE (for example a Shade Agent) | The enclave protects the key from extraction; unless its contract adds its own checks, the agent's code decides what to sign, so a prompt-injected or buggy agent signs whatever its key allows | The policy sits outside the agent; a TEE agent can be the caller of Policy Signer, so the two combine |
-| A multisig | A human signs every payment, so the agent is not autonomous; at threshold 1 it is a hot wallet again | The agent acts alone inside the limits; the owner signs only above the soft limit. The owner is one NEAR account, so protect it as you would a multisig signer and set the policy delay |
+| A multisig | A human signs every payment, so the agent is not autonomous; at threshold 1 it is a hot wallet again | The agent acts alone inside the limits; the owner signs only above the soft limit. The owner is one NEAR account, so in production make it a multisig or DAO account and set the policy delay |
 | A smart-contract wallet with session keys or spending limits | Needs account abstraction and a policy deployed on each chain; the agent holds a session key for that chain | A plain address on any EVM chain that accepts EIP-1559 transactions; one policy and one audit trail on NEAR; the contract writes the calldata, so the agent cannot slip in another call |
-| A hosted wallet API with policies | Keys and policy live on a company's servers; you trust the operator's word for the policy | The policy is open-source contract code on an account with no keys, built reproducibly; its owner (one NEAR account) changes it in public, behind an optional delay, and upgrades wait 48 hours; anyone can read its state and events on NEAR; the NEAR MPC network signs |
+| A hosted wallet API with policies | Keys and policy live on a company's servers; you trust the operator's word for the policy | The policy is open-source contract code on an account with no keys, built reproducibly from commit a3ac91e on (the code deployed on Nov 2 was not built reproducibly); its owner (one NEAR account) changes it in public, behind an optional delay, and upgrades wait 48 hours; anyone can read its state and events on NEAR; signing trusts the NEAR MPC network's threshold instead of one operator |
 
 On a single chain with account abstraction, a session key with an allowance module comes close. What this adds: plain addresses on any EIP-1559 EVM chain, transactions built by the policy itself, an on-chain look-alike refusal, and one audit trail for all chains.
 
@@ -101,7 +101,7 @@ flowchart LR
 - **Address-poisoning detection on chain:** a recipient that is not allowlisted but shares the first and last four hex digits with an allowlisted one is refused as `LookalikeRecipient`, and can never be queued or approved.
 - The owner can pause at once, and can void a signature already issued by burning its nonce, provided the burn is mined first.
 - Each agent has its own request limit and optional per-token daily cap, on top of the global caps.
-- **With `policy_delay_s` set** (it is 0 by default and on the testnet deployment), a stolen owner key cannot loosen policy on the spot: every change that adds a recipient, raises a cap, adds an agent or proposes a new owner is announced and takes effect only after the delay, and the real owner can cancel it. Removals and pause are immediate; so are resume, ticket approvals, burns and token approvals, which a stolen key can use too ([SECURITY.md](SECURITY.md)).
+- **With `policy_delay_s` set** (it is 0 by default and on the testnet deployment), a stolen owner key cannot loosen policy on the spot: every change that adds a recipient, raises a cap, adds an agent or proposes a new owner is announced and takes effect only after the delay, and the real owner can cancel it. Removals and pause are immediate; so are resume, ticket approvals, burns and token approvals, which a stolen key can use too ([SECURITY.md](SECURITY.md)). This holds while the real owner keeps control of the owner account; a thief with its full-access key can also remove the owner's other keys.
 - A failed or timed-out signature is treated as possibly issued: its nonce is not reused for a different transfer and its budget is not released.
 - Every refusal of a submitted request, queue entry, signature, policy change and owner action is a NEP-297 event: an audit trail on chain.
 - The code can change only through a timelock (48 hours by default; it can be raised, never lowered) with an on-chain announcement, or never, once `disable_upgrades` is called.
@@ -143,7 +143,7 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
 | `dashboard/` | The owner console (Vite, NEAR Wallet Selector): reads the contract's views; owner actions are signed in the owner's own wallet, testnet only, or shown as near-cli commands. The page holds no key |
-| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/`, `wallet-page-upgrade/` | Single-file Meteor Wallet pages for the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
+| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/`, `wallet-page-upgrade/`, `wallet-page-owner/` | Single-file Meteor Wallet pages for the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
 | `DEPLOYMENT-TESTNET.md`, `USER-COMMANDS.md` | The testnet deployment: every transaction, and the commands used |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
 | `ROADMAP.md` | What comes after the hackathon |
@@ -205,7 +205,7 @@ All owner methods, and `accept_owner`, require exactly 1 yoctoNEAR. Setters foll
 | `propose_owner` / `accept_owner` | Two-step ownership transfer |
 | `propose_upgrade`, `apply_upgrade`, `cancel_upgrade`, `disable_upgrades` | Timelocked code upgrades, or none |
 
-Views: `list_recipients`, `list_scheduled_changes`, `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (exactly what `request` would decide), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
+Views: `list_recipients`, `list_scheduled_changes`, `get_status(chain_id, token)` (one call for budget, nonce, in-flight request and queue size), `preview(agent, request)` (what `request` would decide, except `QueueFull`, which only `request` detects), `get_config`, `list_tickets`, `get_ticket`, `get_agent`, `get_agent_usage`, `get_nonce_state`.
 
 ## Run it on NEAR testnet
 

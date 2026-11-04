@@ -1,6 +1,7 @@
 //! The policy decision, as a pure function of stored policy, the request and
-//! the current time. `request` and `preview` both call it, so a preview can
-//! never disagree with what a request would do.
+//! the current time. `request` and `preview` both call it, so a preview
+//! agrees with what a request would do, except `QueueFull`, which only the
+//! queue itself detects.
 
 use near_sdk::json_types::U128;
 use near_sdk::{near, AccountId};

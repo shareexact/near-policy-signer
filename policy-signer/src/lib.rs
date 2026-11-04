@@ -165,8 +165,8 @@ pub struct ScheduledChange {
 pub const MAX_SCHEDULED_CHANGES: u32 = 50;
 pub const MAX_RECIPIENTS_PER_CHAIN: usize = 200;
 /// A burn may exceed the chain's fee caps to outbid a transaction signed at
-/// the cap, but by at most this factor, so an owner key cannot spend the
-/// derived address's balance on fees through burns.
+/// the cap, but by at most this factor. This bounds each burn's fee, not the
+/// number of burns.
 pub const BURN_FEE_FACTOR: u128 = 3;
 /// A zero-value transfer needs 21,000 gas; a little headroom, no more.
 pub const BURN_MAX_GAS_LIMIT: u128 = 50_000;
