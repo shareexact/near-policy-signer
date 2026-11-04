@@ -20,3 +20,8 @@ agent/agent.config.video.json
 
 # Console
 dashboard/dist/
+
+# Upgrade check: the deployed commit, checked out by upgrade-check/run.sh
+.old/
+upgrade-check/target/
+upgrade-check/Cargo.lock

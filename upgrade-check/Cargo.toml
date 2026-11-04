@@ -1,0 +1,14 @@
+[package]
+name = "upgrade-check"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Checks that contract state written by the deployed commit is read correctly by the current code."
+
+# `policy-signer-old` is the deployed commit, checked out by run.sh into ../.old
+# and renamed so both versions can be linked into one test.
+[dependencies]
+policy-signer-old = { path = "../.old/policy-signer" }
+policy-signer = { path = "../policy-signer" }
+near-sdk = { version = "5", features = ["unit-testing"] }
+serde_json = "1"

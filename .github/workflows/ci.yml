@@ -43,6 +43,15 @@ jobs:
             target/near/policy_signer/policy_signer.wasm
             target/near/policy_signer/policy_signer.wasm.sha256
 
+  upgrade-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: State written by the deployed commit 88e06a6 reads the same under the current code
+        run: ./upgrade-check/run.sh
+
   agent:
     runs-on: ubuntu-latest
     defaults:
