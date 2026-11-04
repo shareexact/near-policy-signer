@@ -1,8 +1,11 @@
-//! Upgrade rehearsal at the state level. The deployed code (`policy_signer_old`)
-//! is set up the way the testnet deployment is, with a queued ticket, a spend
-//! and a signed nonce; its state is written to storage; then the current code's
+//! Upgrade rehearsal at the state level, on synthetic state. The deployed code
+//! (`policy_signer_old`) is configured as the testnet deployment was on Nov 2
+//! (agent, chain, native ETH token, recipient), with a queued ticket and the
+//! nonce moved to 2 by `reset_nonce` (no spend and no signature: those need the
+//! MPC callback); its state is written to storage; then the current code's
 //! `migrate` reads it, as `apply_upgrade` does on chain, and every view must
 //! return the same JSON. Finally the current code is exercised on that state.
+//! This is not the live state, and it does not run the deploy receipt.
 
 use near_sdk::json_types::U128;
 use near_sdk::test_utils::VMContextBuilder;

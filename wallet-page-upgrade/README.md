@@ -7,7 +7,7 @@ upgrade timelock. Same design and locks as [`../wallet-page/`](../wallet-page/);
 ## What changes
 
 The only contract change since 88e06a6 is that `propose_owner` goes through the policy delay, so a stolen owner key cannot
-hand the contract to its holder before the real owner can cancel. The state layout is unchanged (`migrate` reads it as is); [`upgrade-check/`](../upgrade-check/) checks this in CI by writing state with 88e06a6 and reading it with the new code. The full deploy and `migrate` receipt has not run in a sandbox.
+hand the contract to its holder before the real owner can cancel. The state layout is unchanged (`migrate` reads it as is); [`upgrade-check/`](../upgrade-check/) checks this in CI on synthetic state (configured like the deployment, with a queued ticket) written with 88e06a6 and read with the new code. The full deploy and `migrate` receipt has not run in a sandbox.
 
 ## The code
 

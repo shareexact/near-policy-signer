@@ -8,7 +8,7 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 
 **Status:** live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet. ERC-20 and Stock Token transfers are implemented and unit-tested. Testnet only, not audited. Built at the NEAR HACKATHON (November 2026), tracks AI Security & Defense (`security`) and Agent Economy (`agents`).
 
-## For NEAR HACKATHON judges (2 minutes)
+## For NEAR HACKATHON judges
 
 **In one line:** the agent gets a budget, not a wallet key. A NEAR contract owns the agent's EVM address through Chain Signatures, builds every transfer itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign. The contract account has no access keys, and the agent's only key can call one method, `request`.
 
@@ -40,8 +40,14 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
    npm run cli -- preview "send 0.0004 ETH to alice-old"   # decision REFUSED, refusal LookalikeRecipient (address poisoning)
    npm run cli -- preview "send 0.0004 ETH to bob"         # decision NEEDS_APPROVAL (a new recipient goes to the owner)
    ```
-   `alice-old` shares the first and last four hex digits with `alice`. Answers depend on today's spend and on whether the owner has paused. The public RPC is rate limited; if a call fails, run `export NEAR_RPC_URL=https://test.rpc.fastnear.com` (or another endpoint from the [NEAR RPC providers list](https://docs.near.org/api/rpc/providers)) and retry.
+   `alice-old` shares the first and last four hex digits with `alice`. Answers depend on today's spend and on whether the owner has paused. The public RPC is rate limited; the judges' config uses FastNEAR's public testnet endpoint; if a call fails, run `export NEAR_RPC_URL=https://rpc.testnet.near.org` (or another endpoint from the [NEAR RPC providers list](https://docs.near.org/api/rpc/providers)) and retry.
 3. **Run the tests** (about 5 minutes once dependencies are downloaded): `cargo test` (policy-signer 95, mock-signer 5) and `cd agent && npm ci && npm test` (36).
+
+### Verify the code
+
+- **The upgrade target:** release [`policy-signer-wasm-a3ac91e`](https://github.com/shareexact/near-policy-signer/releases/tag/policy-signer-wasm-a3ac91e), sha256 `c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a` (NEAR code hash `E1xgsbWL3TwTefBKFAUdLoKiuYME2zEw938T8ycsnbPF`), also at `wallet-page-upgrade/policy_signer.wasm`. Rebuild it: `git checkout a3ac91e && cd policy-signer && cargo near build reproducible-wasm` (Docker; the image is pinned by digest in `policy-signer/Cargo.toml`), then `sha256sum ../target/near/policy_signer/policy_signer.wasm`. Two separate CI runs of that commit produced this hash. The wasm also answers `contract_source_metadata` with the repository and commit.
+- **The code deployed on Nov 2:** commit `88e06a6`, built without the reproducible image; its on-chain code hash is the base58 form of the sha256 of that build, but a rebuild will not match byte for byte. The upgrade above replaces it.
+- **The upgrade itself:** `./upgrade-check/run.sh` builds 88e06a6 and the current code into one test, writes synthetic state with the old code (configured like the deployment, with a queued ticket) and reads it with the new code's `migrate`.
 
 ### What is live and what is not
 
