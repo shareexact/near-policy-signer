@@ -4,6 +4,17 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 publish = false
+repository = "https://github.com/shareexact/near-policy-signer"
+description = "A spending firewall for AI agents on EVM chains, built on NEAR Chain Signatures."
+
+# Reproducible build (NEP-330): `cargo near build reproducible-wasm` builds the
+# contract inside this exact image, so anyone can rebuild the deployed wasm and
+# compare its sha256 with the code hash proposed on chain.
+[package.metadata.near.reproducible_build]
+image = "sourcescan/cargo-near:0.22.0-rust-1.97.1"
+image_digest = "sha256:7467038bdddc86484b73b416eeadce926ff59013e128e53dec5a19e1cb4b2234"
+passed_env = []
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

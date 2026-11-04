@@ -1,4 +1,6 @@
 [toolchain]
-channel = "stable"
-components = ["rustfmt", "clippy"]
+# Pinned to the Rust version inside the reproducible-build image
+# (sourcescan/cargo-near:0.22.0-rust-1.97.1, see policy-signer/Cargo.toml),
+# so local, CI and reproducible builds use the same compiler.
+channel = "1.97.1"
 targets = ["wasm32-unknown-unknown"]

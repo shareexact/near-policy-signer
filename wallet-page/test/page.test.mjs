@@ -1,8 +1,8 @@
 // Loads index.html in jsdom with a MOCK Meteor extension (window.meteorCom). No real wallet is opened.
 // The mock answers "login" and captures the base64 transactions that the Meteor SDK would hand to the
 // extension for signing, then answers "closed_fail" (rejected), so nothing is ever signed or broadcast.
-// Read-only RPC goes to rpc.testnet.near.org (real chain state: policy-v1 deployed, 0 keys); in phase B the
-// policy-v1 gate queries are mocked to fail on purpose.
+// Every RPC call is answered offline: policy-v1 as deployed (code hash, 0 keys), aa5hr.testnet's key and the
+// latest block; in phase B the policy-v1 gate queries are mocked to fail on purpose. No network is needed.
 import { JSDOM } from "jsdom";
 import fs from "fs";
 import { createRequire } from "module";
@@ -39,6 +39,20 @@ function compare(label, capturedB64, expectedB64) {
   check(ser(c) === expectedB64, `${label}: borsh bytes identical to fixtures/u3-expected.json after normalising nonce/blockHash`);
 }
 
+// Offline RPC for everything the page and the Meteor SDK read besides policy-v1's mocked views:
+// aa5hr.testnet's access key (nonce) and the latest block hash. The test needs no network.
+const OFFLINE_BLOCK_HASH = "GPkfq5MTJcr3TjLxh7ysgfZA3Ls9QT8NojRUTWpyY4y5";
+function offlineRpc(body) {
+  const reply = (o) => new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, ...o }), { headers: { "content-type": "application/json" } });
+  const p = body.params ?? {};
+  if (body.method === "block") return reply({ result: { header: { hash: OFFLINE_BLOCK_HASH, height: 1 } } });
+  if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key")
+    return reply({ result: { nonce: 275000000000000, permission: "FullAccess", block_height: 1, block_hash: OFFLINE_BLOCK_HASH } });
+  if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key_list")
+    return reply({ result: { keys: [{ public_key: "ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf", access_key: { nonce: 275000000000000, permission: "FullAccess" } }], block_height: 1, block_hash: OFFLINE_BLOCK_HASH } });
+  throw new Error(`unexpected RPC call ${body.method} ${JSON.stringify(p)}`);
+}
+
 async function makePage({ loginAccount, mockGate }) {
   const sent = [];
   const dom = new JSDOM(html, {
@@ -48,7 +62,7 @@ async function makePage({ loginAccount, mockGate }) {
       window.open = () => { throw new Error("window.open must not be used with the extension mock"); };
       window.fetch = async (url, opts) => {
         const body = JSON.parse(opts.body);
-        if (mockGate && body.method === "query" && body.params.account_id === "policy-v1.shareexact-chainsig-demo.testnet") {
+        if (body.method === "query" && body.params.account_id === "policy-v1.shareexact-chainsig-demo.testnet") {
           // mockGate: "badhash" | "haskey" | "missing"  (makes the U3 lock check fail on purpose)
           if (mockGate === "missing") return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, error: { cause: { name: "UNKNOWN_ACCOUNT" } } }), { headers: { "content-type": "application/json" } });
           const result = body.params.request_type === "view_account"
@@ -56,7 +70,7 @@ async function makePage({ loginAccount, mockGate }) {
             : { keys: mockGate === "haskey" ? [{ public_key: "ed25519:7qYtkNWa2eS9LP5ZonKPq97HmD6NV5Chj4jkKgcEgEvp", access_key: { nonce: 1, permission: "FullAccess" } }] : [], block_height: 1, block_hash: "x" };
           return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }), { headers: { "content-type": "application/json" } });
         }
-        return nativeFetch(url, opts);
+        return offlineRpc(body);
       };
       let listener = null; const answered = new Set();
       window.meteorCom = {

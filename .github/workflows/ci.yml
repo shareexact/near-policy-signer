@@ -27,6 +27,19 @@ jobs:
           (cd policy-signer && cargo near build non-reproducible-wasm --locked)
           (cd mock-signer && cargo near build non-reproducible-wasm --locked)
           ls -l target/near/*/*.wasm
+      - name: Reproducible wasm (NEP-330, in the image pinned in policy-signer/Cargo.toml)
+        run: |
+          (cd policy-signer && cargo near build reproducible-wasm)
+          cd target/near/policy_signer
+          sha256sum policy_signer.wasm | tee policy_signer.wasm.sha256
+          echo "policy_signer.wasm sha256: $(cut -d' ' -f1 policy_signer.wasm.sha256)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the reproducible wasm
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-signer-reproducible-wasm
+          path: |
+            target/near/policy_signer/policy_signer.wasm
+            target/near/policy_signer/policy_signer.wasm.sha256
 
   agent:
     runs-on: ubuntu-latest
@@ -64,21 +77,25 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-  wallet-page-chain-fix:
+  owner-pages:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        page: [wallet-page, wallet-page-owner-demo, wallet-page-chain-fix]
     defaults:
       run:
-        working-directory: wallet-page-chain-fix
+        working-directory: ${{ matrix.page }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: wallet-page-chain-fix/package-lock.json
+          cache-dependency-path: ${{ matrix.page }}/package-lock.json
       - run: npm ci
       - name: Rebuild gives the committed page
         run: |
           npm run build
           git diff --exit-code index.html
-      - run: npm test
+      - name: Test (offline, mock wallet, nothing is signed)
+        run: npm test

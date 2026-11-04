@@ -2,7 +2,7 @@
 // The mock answers "login" and captures the base64 transactions the Meteor SDK would hand to the extension,
 // then answers "closed_fail" (rejected), so nothing is ever signed or broadcast.
 // policy-v1's views are mocked in every phase (ticket 1 Pending from fixtures/ticket-1-pending.json, paused false unless set),
-// so the test does not depend on the live demo state. aa5hr.testnet's nonce and block hash still come from rpc.testnet.near.org.
+// so the test does not depend on the live demo state; aa5hr.testnet's key and the latest block are answered offline too, so no network is needed.
 import { JSDOM } from "jsdom";
 import fs from "fs";
 import { createRequire } from "module";
@@ -31,8 +31,23 @@ function compare(label, capturedB64, expectedB64) {
   c.nonce = e.nonce; c.blockHash = e.blockHash; c.publicKey = e.publicKey;
   check(ser(c) === expectedB64, `${label}: borsh bytes identical to fixtures/owner-expected.json after normalising nonce/blockHash`);
 }
-const realTicket = JSON.parse(fs.readFileSync(new URL("./fixtures/ticket-1-pending.json", import.meta.url), "utf8"));
+// The fixture is ticket 1 as read on Nov 2; its expiry is moved to an hour from now so the test does not depend on the date.
+const realTicket = { ...JSON.parse(fs.readFileSync(new URL("./fixtures/ticket-1-pending.json", import.meta.url), "utf8")), expires_at: Math.floor(Date.now() / 1000) + 3600 };
 // mock: { paused?, ticket?, owner?, codeHash?, keys?, missing? } overrides for policy-v1's views
+// Offline RPC for everything the page and the Meteor SDK read besides policy-v1's mocked views:
+// aa5hr.testnet's access key (nonce) and the latest block hash. The test needs no network.
+const OFFLINE_BLOCK_HASH = "GPkfq5MTJcr3TjLxh7ysgfZA3Ls9QT8NojRUTWpyY4y5";
+function offlineRpc(body) {
+  const reply = (o) => new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, ...o }), { headers: { "content-type": "application/json" } });
+  const p = body.params ?? {};
+  if (body.method === "block") return reply({ result: { header: { hash: OFFLINE_BLOCK_HASH, height: 1 } } });
+  if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key")
+    return reply({ result: { nonce: 275000000000000, permission: "FullAccess", block_height: 1, block_hash: OFFLINE_BLOCK_HASH } });
+  if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key_list")
+    return reply({ result: { keys: [{ public_key: "ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf", access_key: { nonce: 275000000000000, permission: "FullAccess" } }], block_height: 1, block_hash: OFFLINE_BLOCK_HASH } });
+  throw new Error(`unexpected RPC call ${body.method} ${JSON.stringify(p)}`);
+}
+
 async function makePage({ loginAccount, mock }) {
   const sent = [];
   const dom = new JSDOM(html, {
@@ -56,7 +71,7 @@ async function makePage({ loginAccount, mock }) {
             return reply({ result: { result: [...Buffer.from(JSON.stringify(v))], logs: [], block_height: 1, block_hash: "x" } });
           }
         }
-        return nativeFetch(url, opts);
+        return offlineRpc(body);
       };
       let listener = null; const answered = new Set();
       window.meteorCom = {

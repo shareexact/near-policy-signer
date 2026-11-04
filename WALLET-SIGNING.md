@@ -50,4 +50,4 @@ transactions the Meteor SDK hands to the extension and then rejects them, so not
 transaction is decoded with an independent library (near-api-js 0.45.1) and compared field by field, and byte for byte after
 normalising the live nonce and block hash, with the unsigned transactions in `test/fixtures/`. The tests also cover the locks
 (wrong code hash, leftover key, missing account, wrong owner, ticket not pending), a wrong connected account, and forced
-clicks on disabled buttons. The tests of `wallet-page/` and `wallet-page-owner-demo/` read aa5hr.testnet's current nonce from rpc.testnet.near.org, so they need network access; the test of `wallet-page-chain-fix/` mocks every RPC call and runs offline.
+clicks on disabled buttons. Every RPC call in the three tests is answered offline (the contract's views, aa5hr.testnet's key and the latest block), so they need no network, and CI runs all three, each after checking that a rebuild gives the committed page byte for byte.
