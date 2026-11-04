@@ -1,0 +1,40 @@
+name: release-wasm
+
+# Builds the policy-signer contract reproducibly (NEP-330, in the image pinned in
+# policy-signer/Cargo.toml) and publishes the wasm and its sha256 as a GitHub
+# release of the commit it was built from. Run by hand for a deployment or an
+# upgrade; anyone can rebuild the same commit and compare the hash.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries for cargo-near
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+      - name: Install cargo-near (pinned)
+        run: cargo install cargo-near --version 0.22.0 --locked
+      - name: Reproducible wasm
+        run: |
+          (cd policy-signer && cargo near build reproducible-wasm)
+          cd target/near/policy_signer
+          sha256sum policy_signer.wasm | tee policy_signer.wasm.sha256
+          echo "policy_signer.wasm sha256: $(cut -d' ' -f1 policy_signer.wasm.sha256)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short=$(git rev-parse --short=7 HEAD)
+          sha=$(cut -d' ' -f1 target/near/policy_signer/policy_signer.wasm.sha256)
+          gh release create "policy-signer-wasm-$short" \
+            target/near/policy_signer/policy_signer.wasm \
+            target/near/policy_signer/policy_signer.wasm.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "policy-signer wasm, reproducible build of $short" \
+            --notes "Reproducible build (cargo near build reproducible-wasm, sourcescan/cargo-near:0.22.0-rust-1.97.1 pinned by digest) of commit $GITHUB_SHA. sha256: $sha. To verify: git checkout $GITHUB_SHA && cd policy-signer && cargo near build reproducible-wasm && sha256sum ../target/near/policy_signer/policy_signer.wasm"
