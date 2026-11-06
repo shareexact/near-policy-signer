@@ -2,12 +2,12 @@
 
 One self-contained file, `index.html`, for the three owner calls that bring the testnet deployment in
 [DEPLOYMENT-TESTNET.md](../DEPLOYMENT-TESTNET.md) from commit 88e06a6 to the current code, through the contract's own
-upgrade timelock. Same design and locks as [`../wallet-page/`](../wallet-page/); see [WALLET-SIGNING.md](../WALLET-SIGNING.md).
+upgrade timelock. Done: proposed on Nov 4, applied and the policy delay turned on on Nov 6 (transactions 27 to 29), so every button is now locked. Same design and locks as [`../wallet-page/`](../wallet-page/); see [WALLET-SIGNING.md](../WALLET-SIGNING.md).
 
 ## What changes
 
 The only contract change since 88e06a6 is that `propose_owner` goes through the policy delay, so a stolen owner key cannot
-hand the contract to its holder before the real owner can cancel. The state layout is unchanged (`migrate` reads it as is); [`upgrade-check/`](../upgrade-check/) checks this in CI on synthetic state (configured like the deployment, with a queued ticket) written with 88e06a6 and read with the new code. The full deploy and `migrate` receipt has not run in a sandbox.
+hand the contract to its holder before the real owner can cancel. The state layout is unchanged (`migrate` reads it as is); [`upgrade-check/`](../upgrade-check/) checks this in CI on synthetic state (configured like the deployment, with a queued ticket) written with 88e06a6 and read with the new code. The deploy and `migrate` receipt itself first ran on testnet, on Nov 6.
 
 ## The code
 

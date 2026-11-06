@@ -1,6 +1,6 @@
 # Testnet deployment (Nov 2 2026)
 
-The contract at commit 88e06a6 is deployed on NEAR testnet and drives native ETH transfers on Robinhood Chain testnet
+The contract, deployed at commit 88e06a6 and upgraded on Nov 6 to the reproducible build of a3ac91e, is on NEAR testnet and drives native ETH transfers on Robinhood Chain testnet
 (chain id 46630) through the NEAR MPC signer. Testnet only; no mainnet account or chain was used.
 All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every hash in rows 1 to 25 was re-read on RPC after the run; all are final and successful. Row 26 was signed on Nov 3 from the owner page, which then read `get_chain` back (see open item 3).
 
@@ -53,6 +53,8 @@ All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every h
 | 25 (8.5) | 5:07:29 PM | NEAR | `GAJySQeS5z5ZcruUHMoFMv1jzELcfp1FWXsTo6SFeTx4` | aa5hr.testnet (9k4y..., Meteor) | `set_paused` false | SuccessValue, block 275971796 |
 | 26 | Tue Nov 3 | NEAR | `CJ7H1U4jcRGWPANrJ4uKMLXeUfW1JvATUhwH2SKqhw2E` | aa5hr.testnet (9k4y..., Meteor) | `set_chain` 46630 with `exact_transfer` null, every other field unchanged ([`wallet-page-chain-fix/`](wallet-page-chain-fix/)); see open item 3 | signed in Meteor; get_chain then read `exact_transfer: null`, other fields unchanged |
 | 27 | Wed Nov 4, 6:50:11 AM | NEAR | `3H6Yd7dbfdTz3iPz9qUjioz4ApqxRfuuWdKasKcy23Gm` | aa5hr.testnet (9k4y..., Meteor) | `propose_upgrade` sha256 `c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a` (release `policy-signer-wasm-a3ac91e`); event `upgrade_proposed`, `executable_at` 1793973011 = Fri Nov 6, 6:50:11 AM MST ([`wallet-page-upgrade/`](wallet-page-upgrade/)); see open item 4 | Success, block 276203160 |
+| 28 | Fri Nov 6, 6:53:19 AM | NEAR | `DJDfYoJpDaEs7unEUHLsXPkk2u7st7HkCDsbLwXmjjPW` | aa5hr.testnet (9k4y..., Meteor) | `apply_upgrade` with the release wasm (sha256 `c166e563...`); the follow-up receipt deployed it and ran `migrate`; `view_account` then shows code hash `E1xgsbWL3TwTefBKFAUdLoKiuYME2zEw938T8ycsnbPF` ([`wallet-page-upgrade/`](wallet-page-upgrade/)) | signed in Meteor; the upgrade page then read code hash `E1xgsbWL...` from `view_account` and no pending upgrade |
+| 29 | Fri Nov 6, 6:54:03 AM | NEAR | `8KzSo5hFA9vBbsfwK6NoZ2AeJ7mnXW4dGQueoUzQeEcC` | aa5hr.testnet (9k4y..., Meteor) | `set_params`: `policy_delay_s` 3600, every other parameter unchanged ([`wallet-page-upgrade/`](wallet-page-upgrade/)) | signed in Meteor; `get_config` then read `policy_delay_s` 3600, other parameters unchanged |
 
 Explorer links: NEAR `https://testnet.nearblocks.io/txns/<hash>`, 46630 `https://explorer.testnet.chain.robinhood.com/tx/<hash>`.
 
@@ -71,8 +73,8 @@ Alice `0x0C7F5b0f2cbA6a576F92f60205e87F4D28080490` 1368579830000000 wei, nonce 9
 Derived address check: `v1.signer-prod.testnet`'s `derived_public_key` view (predecessor policy-v1, path `robinhood-46630-1`, used by
 `npm run cli -- address`) and an offline derivation from the signer's root public key both give `0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F`; both 46630 sends recovered to it.
 
-`get_config`: version 1, owner aa5hr.testnet, proposed_owner null, signer v1.signer-prod.testnet, path robinhood-46630-1, network Testnet,
-paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 86400, policy_delay_s 0, no pending upgrade.
+`get_config` on Nov 2: version 1, owner aa5hr.testnet, proposed_owner null, signer v1.signer-prod.testnet, path robinhood-46630-1, network Testnet,
+paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 86400, policy_delay_s 0, no pending upgrade. (Since Nov 6: policy_delay_s 3600, transaction 29.)
 
 `get_status {"chain_id":46630,"token":"0x0000000000000000000000000000000000000000"}`:
 
@@ -108,4 +110,4 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
    only native ETH. It was cleared on Nov 3 by transaction 26, one owner call, `set_chain` with `exact_transfer: null` and every other field
    unchanged, signed in [`wallet-page-chain-fix/`](wallet-page-chain-fix/). The contract now refuses to register a `StockExact`
    token on 46630.
-4. Upgrade to the current code. The deployment runs 88e06a6, from before `propose_owner` went through the policy delay. The upgrade goes through the contract's own timelock with [`wallet-page-upgrade/`](wallet-page-upgrade/): `propose_upgrade` for the reproducible build of commit a3ac91e (release `policy-signer-wasm-a3ac91e`, sha256 `c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a`), `apply_upgrade` at least 48 hours later, then `set_params` with `policy_delay_s` 3600. Proposed on Nov 4 (transaction 27); it can be applied from Fri Nov 6, 6:50:11 AM MST (13:50:11 UTC). Each transaction is added to the table above when signed.
+4. Upgrade to the current code, done. The deployment ran 88e06a6, from before `propose_owner` went through the policy delay. The upgrade goes through the contract's own timelock with [`wallet-page-upgrade/`](wallet-page-upgrade/): `propose_upgrade` for the reproducible build of commit a3ac91e (release `policy-signer-wasm-a3ac91e`, sha256 `c166e5635d8df6d25528acfa611c8ee81228650dced0b2f6a986ef6687d95e5a`), `apply_upgrade` at least 48 hours later, then `set_params` with `policy_delay_s` 3600. Proposed on Nov 4 (transaction 27); it can be applied from Fri Nov 6, 6:50:11 AM MST (13:50:11 UTC). Applied on Nov 6 (transaction 28); the 1-hour policy delay turned on (29).
