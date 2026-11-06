@@ -67,6 +67,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: New-agent script, offline against a mock RPC
+        run: node test/new-agent/run.mjs
       - name: Demo take script, offline with stubs
         run: bash test/demo-take/run.sh
       - name: Test vectors match the contract tests
@@ -94,7 +96,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        page: [wallet-page, wallet-page-owner-demo, wallet-page-chain-fix, wallet-page-upgrade, wallet-page-owner]
+        page: [wallet-page, wallet-page-owner-demo, wallet-page-chain-fix, wallet-page-upgrade, wallet-page-owner, wallet-page-new-agent]
     defaults:
       run:
         working-directory: ${{ matrix.page }}

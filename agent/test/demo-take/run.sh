@@ -33,4 +33,13 @@ out=$(DEMO_TEST_BALANCE=100 $S take </dev/null 2>&1 | strip); expect "derived ad
 rm -f "$T/cfgcount"; out=$(enters | AREQ=16 $S rehearse 2>&1 | strip)
 for s in "shot R1: PASS" "shot 7: PASS" "owner: ticket 7 approved" "left to expire unused"; do expect "rehearse: $s" "$out" "$s"; done
 zero "rehearse: no broadcast" "$(printf '%s' "$out" | grep -c -- '--broadcast')"
+# The agent made by scripts/new-agent.mjs: its key file is used, and the run uses that account.
+mkdir -p "$T/.near-policy-signer"
+jq -n --arg pk "${KEY#* }" --arg sk "${KEY%% *}" '{accountId:"policy-signer-agent-v2.testnet",requestPublicKey:$pk,requestSecretKey:$sk}' >"$T/.near-policy-signer/agent-v2.json"
+unset NEAR_AGENT_KEY
+out=$(AGENT_REG=null $S take </dev/null 2>&1 | strip); expect "new agent not registered yet: stops" "$out" "is not a registered, enabled agent"
+rm -f "$T/cfgcount"; out=$(enters | DEMO_EXPECT_AGENT=policy-signer-agent-v2.testnet $S take 2>&1 | strip)
+expect "new agent: key read from its file" "$out" "Agent key: $T/.near-policy-signer/agent-v2.json (policy-signer-agent-v2.testnet)"
+expect "new agent: the run uses that account" "$out" "shot 10: PASS"
+zero "new agent: no secret key in the output" "$(printf '%s' "$out" | grep -c -- "${KEY%% *}")"
 echo; [ "$fails" = 0 ] && echo "ALL CHECKS OK" || { echo "$fails FAILED"; exit 1; }

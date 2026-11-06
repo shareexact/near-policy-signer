@@ -18,8 +18,13 @@ MODE="${1:-}"
 case "$MODE" in check | rehearse | take) ;; *) echo "usage: $0 check|rehearse|take" >&2; exit 2 ;; esac
 
 CONTRACT="policy-v1.shareexact-chainsig-demo.testnet"
+# The agent: the one made by scripts/new-agent.mjs if its key file is here, else the Nov 2 agent.
+AGENT_FILE="$HOME/.near-policy-signer/agent-v2.json"
 AGENT_ACCOUNT="agent-v1.shareexact-chainsig-demo.testnet"
 AGENT_PUBKEY="ed25519:F6TZxxYhxXHvJdVWVkjnyBPm6JzqKdANfNwxw1eM9aAG"
+if [ -f "$AGENT_FILE" ]; then
+  AGENT_ACCOUNT=$(jq -r .accountId "$AGENT_FILE") && AGENT_PUBKEY=$(jq -r .requestPublicKey "$AGENT_FILE") || { echo "cannot read $AGENT_FILE" >&2; exit 1; }
+fi
 DERIVED="0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F"
 CHAIN=46630
 ETH="0x0000000000000000000000000000000000000000"
@@ -82,6 +87,11 @@ hhmm=$(date -u +%H%M)
 if [ "$MODE" != check ] && [ "$hhmm" -ge 2330 ]; then die "it is after 23:30 UTC; the daily caps reset at 00:00 UTC (5 PM MST). Start after 00:05 UTC."; fi
 
 if [ "$MODE" != check ]; then
+  if [ -z "${NEAR_AGENT_KEY:-}" ] && [ -f "$AGENT_FILE" ]; then
+    DEMO_CAND=$(jq -r '.requestSecretKey // empty' "$AGENT_FILE"); export DEMO_CAND
+    if [ -n "$DEMO_CAND" ] && [ "$(pubkey_of DEMO_CAND)" = "$AGENT_PUBKEY" ]; then NEAR_AGENT_KEY="$DEMO_CAND"; note "Agent key: $AGENT_FILE ($AGENT_ACCOUNT)."; fi
+    unset DEMO_CAND
+  fi
   if [ -z "${NEAR_AGENT_KEY:-}" ]; then
     for f in "$HOME/.near-credentials/testnet/$AGENT_ACCOUNT.json" "$HOME"/.near-credentials/testnet/"$AGENT_ACCOUNT"/*.json; do
       [ -f "$f" ] || continue
@@ -114,7 +124,10 @@ say "${G}ok${N}  not paused; nothing in flight; remaining today: $remaining wei 
 creq=$(printf '%s' "$status" | jq -r .requests_today); cmax=$(printf '%s' "$status" | jq -r .max_requests_per_day)
 usage=$(view get_agent_usage "{\"agent\":\"$AGENT_ACCOUNT\",\"chain_id\":$CHAIN,\"token\":\"$ETH\"}") || die "cannot read get_agent_usage"
 areq=$(printf '%s' "$usage" | jq -r .requests_today)
-amax=$(view get_agent "{\"agent\":\"$AGENT_ACCOUNT\"}" | jq -r .max_requests_per_day) || die "cannot read get_agent"
+agent=$(view get_agent "{\"agent\":\"$AGENT_ACCOUNT\"}") || die "cannot read get_agent"
+[ "$(printf '%s' "$agent" | jq -r '.enabled // false')" = true ] || die "$AGENT_ACCOUNT is not a registered, enabled agent of the contract yet (wallet-page-new-agent steps 2 and 3)"
+amax=$(printf '%s' "$agent" | jq -r .max_requests_per_day)
+say "${G}ok${N}  $AGENT_ACCOUNT is a registered agent ($(printf '%s' "$agent" | jq -r .label))"
 say "      requests today: agent $areq of $amax, contract $creq of $cmax"
 balance=$(evm_balance_wei) || die "cannot read the derived address's balance on $CHAIN"
 say "      derived address $DERIVED on $CHAIN: $balance wei"
@@ -133,7 +146,7 @@ say "${G}Preflight OK.${N}"
 
 # ---------------------------------------------------------------- the sends
 VIDEO_CFG="agent.config.video.json"
-jq '.chains["46630"].allowBroadcast = true' agent.config.judges.json >"$VIDEO_CFG" || die "cannot write $VIDEO_CFG"
+jq --arg a "$AGENT_ACCOUNT" '.chains["46630"].allowBroadcast = true | .near.agentAccountId = $a' agent.config.judges.json >"$VIDEO_CFG" || die "cannot write $VIDEO_CFG"
 trap 'rm -f "$VIDEO_CFG"' EXIT
 export AGENT_CONFIG="$VIDEO_CFG"
 

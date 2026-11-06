@@ -1,0 +1,26 @@
+{
+  "name": "near-policy-signer-wallet-page-new-agent",
+  "version": "1.0.0",
+  "description": "Local Meteor Wallet page: create a new agent account funded by the owner, and register it through the policy delay (testnet only)",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/page.test.mjs"
+  },
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "@near-js/crypto": "2.5.1",
+    "@near-js/transactions": "2.5.1",
+    "@near-wallet-selector/core": "10.1.4",
+    "@near-wallet-selector/meteor-wallet": "10.1.4",
+    "buffer": "6.0.3",
+    "esbuild": "0.28.2",
+    "util": "0.12.5"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "near-api-js": "0.45.1"
+  },
+  "private": true
+}

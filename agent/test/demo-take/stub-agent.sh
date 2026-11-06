@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # stub agent: canned outputs by instruction; SCEN=bad makes shot 6 come back queued
+if [ -n "${DEMO_EXPECT_AGENT:-}" ] && [ "$(jq -r .near.agentAccountId "$AGENT_CONFIG")" != "$DEMO_EXPECT_AGENT" ]; then echo "stub: config agent is $(jq -r .near.agentAccountId "$AGENT_CONFIG")" >&2; exit 1; fi
 case "$*" in
   *"0.002 ETH to alice --skip-preview"*) echo '{"kind":"refused","reason":"AmountCapExceeded","stage":"request","nearTx":"AAA1","links":{"near":"https://testnet.nearblocks.io/txns/AAA1111111111111111"}}' ;;
   *"0.0004 ETH to alice --broadcast"*) echo '{"kind":"signed","signedTx":"0x02","hash":"0xh","signer":"0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F","broadcast":"0xb1","nearTx":"BBB","links":{"near":"https://testnet.nearblocks.io/txns/BBB22222222222","evm":"https://explorer.testnet.chain.robinhood.com/tx/0xb1b1b1b1b1b1b1b1"}}' ;;

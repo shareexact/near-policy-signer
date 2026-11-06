@@ -1,0 +1,31 @@
+{
+ "note": "nonce 1 and a zero block hash; the test normalises both",
+ "calls": {
+  "create": [
+   "testnet",
+   "create_account",
+   "{\"new_account_id\":\"policy-signer-agent-v2.testnet\",\"new_public_key\":\"ed25519:7qYtkNWa2eS9LP5ZonKPq97HmD6NV5Chj4jkKgcEgEvp\"}",
+   "100000000000000",
+   "500000000000000000000000"
+  ],
+  "schedule": [
+   "policy-v1.shareexact-chainsig-demo.testnet",
+   "add_agent",
+   "{\"agent\":\"policy-signer-agent-v2.testnet\",\"policy\":{\"enabled\":true,\"label\":\"demo agent v2\",\"max_requests_per_day\":20}}",
+   "30000000000000",
+   "1"
+  ],
+  "execute": [
+   "policy-v1.shareexact-chainsig-demo.testnet",
+   "execute_change",
+   "{\"change_id\":12}",
+   "30000000000000",
+   "1"
+  ]
+ },
+ "tx": {
+  "create": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAAAcAAAB0ZXN0bmV0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAg4AAABjcmVhdGVfYWNjb3VudHsAAAB7Im5ld19hY2NvdW50X2lkIjoicG9saWN5LXNpZ25lci1hZ2VudC12Mi50ZXN0bmV0IiwibmV3X3B1YmxpY19rZXkiOiJlZDI1NTE5OjdxWXRrTldhMmVTOUxQNVpvbktQcTk3SG1ENk5WNUNoajRqa0tnY0VnRXZwIn0AQHoQ81oAAAAAgNB2ZucN4WkAAAAAAAA=",
+  "schedule": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAACoAAABwb2xpY3ktdjEuc2hhcmVleGFjdC1jaGFpbnNpZy1kZW1vLnRlc3RuZXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACCQAAAGFkZF9hZ2VudHYAAAB7ImFnZW50IjoicG9saWN5LXNpZ25lci1hZ2VudC12Mi50ZXN0bmV0IiwicG9saWN5Ijp7ImVuYWJsZWQiOnRydWUsImxhYmVsIjoiZGVtbyBhZ2VudCB2MiIsIm1heF9yZXF1ZXN0c19wZXJfZGF5IjoyMH19AOBX60gbAAABAAAAAAAAAAAAAAAAAAAA",
+  "execute": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAACoAAABwb2xpY3ktdjEuc2hhcmVleGFjdC1jaGFpbnNpZy1kZW1vLnRlc3RuZXQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAACDgAAAGV4ZWN1dGVfY2hhbmdlEAAAAHsiY2hhbmdlX2lkIjoxMn0A4FfrSBsAAAEAAAAAAAAAAAAAAAAAAAA="
+ }
+}

@@ -91,6 +91,20 @@ npm run cli -- send "send 0.0008 ETH to alice" --ticket 1 --broadcast
 
 Set `allowBroadcast` back to `false` after the demo.
 
+## A new agent (Nov 6)
+
+The Nov 2 agent's key stayed in the environment the deployment ran in. A new agent, made where the demo runs:
+
+```
+cd agent
+node scripts/new-agent.mjs keys      # keys in ~/.near-policy-signer/agent-v2.json (mode 600); prints the account and public key
+#   wallet-page-new-agent step 1: create the account (0.5 NEAR from aa5hr.testnet)
+node scripts/new-agent.mjs finish    # its only key: function call, policy-v1, method request; the full-access key deleted
+#   wallet-page-new-agent step 2: add_agent (scheduled, 1 hour), then step 3: execute_change
+```
+
+`demo-take.sh` uses that agent when its key file is there.
+
 ## Demo video (agent CLI)
 
 `agent/scripts/demo-take.sh` runs the video's agent sends in shot order on the machine that holds the agent's key, with a
