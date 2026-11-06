@@ -1,6 +1,6 @@
 # A new agent for the testnet deployment (Meteor Wallet, NEAR testnet only)
 
-One self-contained file, `index.html` (sha256 `4514d8b85f1ed984b1580a3630aa7e4a3a010832a639d8fbc5fe9c5969ff876f`), for the owner's three transactions that add a new agent to the
+One self-contained file, `index.html` (sha256 `de2e5d6d1f7212653cbe9e9363eacd9b934405d135f4d4d1f2ad11e64abde41a`), for the owner's three transactions that add a new agent to the
 testnet deployment in [DEPLOYMENT-TESTNET.md](../DEPLOYMENT-TESTNET.md). Same design and locks as [`../wallet-page/`](../wallet-page/);
 see [WALLET-SIGNING.md](../WALLET-SIGNING.md). The agent's keys are made and kept by [`agent/scripts/new-agent.mjs`](../agent/scripts/new-agent.mjs),
 never by this page.

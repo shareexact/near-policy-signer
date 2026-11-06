@@ -32,13 +32,17 @@ async function rpc(method, params) {
   if (!r.ok) throw new Error(`${RPC}: HTTP ${r.status}`);
   return r.json();
 }
-/** The account's keys, or null if it does not exist. */
+/** The account's keys, or null if it does not exist. Existence comes from view_account: for an account that does not
+ *  exist, view_access_key_list answers an empty list, not an error. */
 async function keysOf(account) {
-  const j = await rpc("query", { request_type: "view_access_key_list", finality: "final", account_id: account });
-  if (j.error) {
-    if (JSON.stringify(j.error).includes("UNKNOWN_ACCOUNT") || JSON.stringify(j.error).includes("does not exist")) return null;
-    throw new Error(JSON.stringify(j.error).slice(0, 300));
+  const a = await rpc("query", { request_type: "view_account", finality: "final", account_id: account });
+  if (a.error) {
+    if (JSON.stringify(a.error).includes("UNKNOWN_ACCOUNT")) return null;
+    throw new Error(JSON.stringify(a.error).slice(0, 300));
   }
+  if (!a.result?.amount) throw new Error(`view_account ${account}: unexpected answer ${JSON.stringify(a).slice(0, 200)}`);
+  const j = await rpc("query", { request_type: "view_access_key_list", finality: "final", account_id: account });
+  if (j.error || !Array.isArray(j.result?.keys)) throw new Error(`view_access_key_list ${account}: ${JSON.stringify(j.error ?? j).slice(0, 300)}`);
   return j.result.keys;
 }
 const isRequestKey = (k, pk) => k.public_key === pk && k.access_key.permission?.FunctionCall?.receiver_id === POLICY

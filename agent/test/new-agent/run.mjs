@@ -22,7 +22,9 @@ const server = http.createServer((req, res) => {
     const j = JSON.parse(body), p = j.params ?? {};
     const reply = (o) => { res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ jsonrpc: "2.0", id: j.id, ...o })); };
     const unknown = () => reply({ error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCOUNT", info: {} }, message: `account ${p.account_id} does not exist while viewing` } });
-    if (j.method === "query" && p.request_type === "view_access_key_list") return state.accounts[p.account_id] ? reply({ result: { keys: state.accounts[p.account_id], block_height: 1, block_hash: utils.serialize.base_encode(hash32) } }) : unknown();
+    // As a real node does: view_account errors for an unknown account, view_access_key_list answers an empty list.
+    if (j.method === "query" && p.request_type === "view_account") return state.accounts[p.account_id] ? reply({ result: { amount: "500000000000000000000000", locked: "0", code_hash: "11111111111111111111111111111111", storage_usage: 182, block_height: 1, block_hash: utils.serialize.base_encode(hash32) } }) : unknown();
+    if (j.method === "query" && p.request_type === "view_access_key_list") return reply({ result: { keys: state.accounts[p.account_id] ?? [], block_height: 1, block_hash: utils.serialize.base_encode(hash32) } });
     if (j.method === "query" && p.request_type === "view_access_key") {
       const k = state.accounts[p.account_id]?.find((x) => x.public_key === p.public_key);
       return k ? reply({ result: { ...k.access_key, block_height: 1, block_hash: utils.serialize.base_encode(hash32) } }) : reply({ error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCESS_KEY" }, message: "access key does not exist" } });

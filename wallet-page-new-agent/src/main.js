@@ -102,7 +102,10 @@ async function readState() {
   const cfg = acc ? await view("get_config", {}) : undefined;
   const base = acc?.code_hash === P.EXPECTED_CODE_HASH && Array.isArray(keys) && keys.length === 0 && cfg?.owner === P.SIGNER;
   const delayOn = cfg?.params?.policy_delay_s === P.POLICY_DELAY_S;
-  const agentKeys = nameOk ? ((await q({ request_type: "view_access_key_list", account_id: agent }))?.keys ?? null) : null;
+  // Existence from view_account (UNKNOWN_ACCOUNT -> null): for an unknown account view_access_key_list answers an empty list.
+  const agentAcc = nameOk ? await q({ request_type: "view_account", account_id: agent }) : null;
+  const agentKeys = agentAcc ? ((await q({ request_type: "view_access_key_list", account_id: agent }))?.keys ?? null) : null;
+  if (agentAcc && !Array.isArray(agentKeys)) throw new Error(`could not read ${agent}'s keys`);
   const registered = base && nameOk ? await view("get_agent", { agent }) : null;
   const scheduled = base ? await view("list_scheduled_changes", {}) : [];
   const change = scheduled.find((c) => c.change?.SetAgent?.agent === agent) ?? null;

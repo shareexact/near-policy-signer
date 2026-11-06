@@ -45,8 +45,11 @@ async function makePage({ loginAccount = "aa5hr.testnet", mock: m0 = {} } = {}) 
           return reply({ result: { nonce: 275000000000000, permission: "FullAccess", block_height: 1, block_hash: BLOCK_HASH } });
         if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key_list")
           return reply({ result: { keys: [full(PK)], block_height: 1, block_hash: BLOCK_HASH } });
+        // As a real node does: view_account errors for an unknown account, view_access_key_list answers an empty list.
+        if (body.method === "query" && p.account_id === mock.agentIn && p.request_type === "view_account")
+          return mock.agentKeys ? reply({ result: { amount: "500000000000000000000000", locked: "0", code_hash: "11111111111111111111111111111111", storage_usage: 182, block_height: 1, block_hash: BLOCK_HASH } }) : reply({ error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCOUNT" } } });
         if (body.method === "query" && p.account_id === mock.agentIn && p.request_type === "view_access_key_list")
-          return mock.agentKeys ? reply({ result: { keys: mock.agentKeys, block_height: 1, block_hash: BLOCK_HASH } }) : reply({ error: { name: "HANDLER_ERROR", cause: { name: "UNKNOWN_ACCOUNT" } } });
+          return reply({ result: { keys: mock.agentKeys ?? [], block_height: 1, block_hash: BLOCK_HASH } });
         if (body.method === "query" && p.account_id === POLICY) {
           if (p.request_type === "view_account") return reply({ result: { amount: "1", locked: "0", code_hash: mock.codeHash, storage_usage: 1, storage_paid_at: 0, block_height: 1, block_hash: BLOCK_HASH } });
           if (p.request_type === "view_access_key_list") return reply({ result: { keys: mock.keys, block_height: 1, block_hash: BLOCK_HASH } });
