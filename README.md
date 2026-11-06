@@ -26,6 +26,7 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 | Nov 4: the owner proposes the upgrade to the reproducible build of a3ac91e; it can be applied no earlier than 48 hours later | [3H6Yd7db...](https://testnet.nearblocks.io/txns/3H6Yd7dbfdTz3iPz9qUjioz4ApqxRfuuWdKasKcy23Gm) | |
 | Nov 6: the upgrade is applied after the 48-hour timelock; the contract now runs the reproducible build | [DJDfYoJp...](https://testnet.nearblocks.io/txns/DJDfYoJpDaEs7unEUHLsXPkk2u7st7HkCDsbLwXmjjPW) | |
 | The owner turns on the 1-hour policy delay | [8KzSo5hF...](https://testnet.nearblocks.io/txns/8KzSo5hFA9vBbsfwK6NoZ2AeJ7mnXW4dGQueoUzQeEcC) | |
+| With the delay on, allowing a new recipient is only scheduled (`change_scheduled`, executable an hour later); the owner cancels it | [9aSU9vtu...](https://testnet.nearblocks.io/txns/9aSU9vtuXgxudGwcRJ81PeuEKdPhfdnhxrCW7gU6dJuC), [4hE5mRZv...](https://testnet.nearblocks.io/txns/4hE5mRZvCSU8PJBbbRGXD8wYfzydMoECzicYsepfcb7p) | |
 
 Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblocks.io/address/policy-v1.shareexact-chainsig-demo.testnet), owner `aa5hr.testnet`, code: since the Nov 6 upgrade, the reproducible build of commit `a3ac91e` (on-chain code hash `E1xgsbWL...`, the base58 form of the release's sha256 `c166e563...`, see [Verify the code](#verify-the-code)); policy delay 1 hour. Its address on 46630: [0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F](https://explorer.testnet.chain.robinhood.com/address/0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F). Every transaction, in order, with the two refusals that the agent's read-only check caught before any transaction: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 
@@ -59,7 +60,7 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
 
 | Status | What |
 |---|---|
-| Live on testnet, with transactions | The upgrade through the contract's own 48-hour timelock; the 1-hour policy delay; native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
+| Live on testnet, with transactions | The upgrade through the contract's own 48-hour timelock; the 1-hour policy delay, shown with a change scheduled and cancelled; native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
 | Live, read-only | The over-cap and paused refusals of Nov 2 came from the contract's `preview` view, which the agent calls first, so they have no transaction. `request` runs the same `evaluate` function and logs a `refused` event; `send --skip-preview` submits it directly, as a compromised agent would |
 | Implemented, unit-tested only | ERC-20 (`Plain`) and Stock Token (`StockExact`, `StockDirect`) kinds; the delay applied to `propose_owner` (it is on chain, but no ownership transfer has been scheduled); nonce burns and fee bumps; the NEAR AI Cloud planner (tested against a mock; the testnet demo used the rule-based planner) |
 | Planned | Sandbox integration tests with `mock-signer`, alerts and agent packages: [ROADMAP.md](ROADMAP.md) |
