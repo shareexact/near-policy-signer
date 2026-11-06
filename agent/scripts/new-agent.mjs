@@ -102,8 +102,14 @@ async function finish() {
     txs.push(["DeleteKey (the full-access key)", r.transaction.hash]);
     out(`DeleteKey: ${NB}${r.transaction.hash}`);
   }
-  k = await keysOf(s.accountId);
-  if (!(k.length === 1 && isRequestKey(k[0], s.requestPublicKey))) fail(`unexpected keys on ${s.accountId}: ${JSON.stringify(k)}`);
+  // Reads are at "final", a few blocks behind the transactions just sent: wait for them before judging the keys.
+  const done = (keys) => keys.length === 1 && isRequestKey(keys[0], s.requestPublicKey);
+  for (let i = 0; i < 10; i++) {
+    k = await keysOf(s.accountId);
+    if (done(k) || !txs.length) break;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  if (!done(k)) fail(`unexpected keys on ${s.accountId}: ${JSON.stringify(k)}`);
   // Only after the account is in its final shape: drop the full-access secret from the file.
   const kept = { accountId: s.accountId, requestPublicKey: s.requestPublicKey, requestSecretKey: s.requestSecretKey, createdAt: s.createdAt, finishedAt: new Date().toISOString(), txs };
   fs.writeFileSync(FILE, JSON.stringify(kept, null, 1) + "\n", { mode: 0o600 });
