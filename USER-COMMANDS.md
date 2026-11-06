@@ -90,3 +90,20 @@ npm run cli -- send "send 0.0008 ETH to alice" --ticket 1 --broadcast
 ```
 
 Set `allowBroadcast` back to `false` after the demo.
+
+## Demo video (agent CLI)
+
+`agent/scripts/demo-take.sh` runs the video's agent sends in shot order on the machine that holds the agent's key, with a
+read-only preflight first (the agent's on-chain key, not paused, nothing in flight, today's budget and request counts, the
+derived address's balance). It waits for each owner step in `wallet-page-owner/` (approve, pause, resume) and checks it on
+chain, and writes the outcomes and links to `~/demo-take-<time>.txt`. It never prints the key.
+
+```
+cd agent
+./scripts/demo-take.sh check      # read-only
+./scripts/demo-take.sh rehearse   # an on-chain refusal and a queued ticket the owner approves; no ETH spent
+./scripts/demo-take.sh take       # shots 1, 4, 6, 7, 9 and 10; 0.0012 ETH plus fees, 6 of the agent's 20 daily requests
+```
+
+`bash test/demo-take/run.sh` tests it offline with a stub agent and stub views (also in CI).
+

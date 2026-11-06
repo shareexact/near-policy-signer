@@ -67,6 +67,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Demo take script, offline with stubs
+        run: bash test/demo-take/run.sh
       - name: Test vectors match the contract tests
         run: |
           npm run -s vectors > /tmp/vectors.json

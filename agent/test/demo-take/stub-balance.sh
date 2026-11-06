@@ -1,0 +1,1 @@
+echo "$DEMO_TEST_BALANCE"
