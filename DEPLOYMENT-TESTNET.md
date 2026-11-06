@@ -17,7 +17,8 @@ All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every h
 | Owner (signs in Meteor Wallet) | `aa5hr.testnet` |
 | Funding / parent account | `shareexact-chainsig-demo.testnet` |
 | Policy contract | `policy-v1.shareexact-chainsig-demo.testnet` |
-| Agent | `agent-v1.shareexact-chainsig-demo.testnet` |
+| Agent (Nov 2 demo) | `agent-v1.shareexact-chainsig-demo.testnet` |
+| Agent (from Nov 6; see note 6) | `policy-signer-agent-v2.testnet`, one function-call key `EmSEqqXo...` (policy-v1, method `request`) |
 | MPC signer | `v1.signer-prod.testnet`, path `robinhood-46630-1` |
 | Derived 46630 address of policy-v1 | `0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F` |
 | Deployer / demo recipient "alice" (46630) | `0x0C7F5b0f2cbA6a576F92f60205e87F4D28080490` |
@@ -57,6 +58,11 @@ All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every h
 | 29 | Fri Nov 6, 6:54:03 AM | NEAR | `8KzSo5hFA9vBbsfwK6NoZ2AeJ7mnXW4dGQueoUzQeEcC` | aa5hr.testnet (9k4y..., Meteor) | `set_params`: `policy_delay_s` 3600, every other parameter unchanged ([`wallet-page-upgrade/`](wallet-page-upgrade/)) | signed in Meteor; `get_config` then read `policy_delay_s` 3600, other parameters unchanged |
 | 30 | Fri Nov 6, 7:28:50 AM | NEAR | `9aSU9vtuXgxudGwcRJ81PeuEKdPhfdnhxrCW7gU6dJuC` | aa5hr.testnet (9k4y..., Meteor) | `set_recipient` 46630 bob `0xb0b0000000000000000000000000000000000b0b` true: scheduled, not applied (`change_scheduled`, `executable_at` an hour later) ([`wallet-page-owner/`](wallet-page-owner/)) | signed in Meteor; the owner page then read scheduled change 1, allow bob, `executable_at` Fri Nov 6, 8:28:50 AM MST |
 | 31 | Fri Nov 6, 7:29:46 AM | NEAR | `4hE5mRZvCSU8PJBbbRGXD8wYfzydMoECzicYsepfcb7p` | aa5hr.testnet (9k4y..., Meteor) | `cancel_change` for that change (`change_cancelled`); bob was never allowed ([`wallet-page-owner/`](wallet-page-owner/)) | Success, block 276498731; event `change_cancelled` for change 1 (`AllowRecipient` 46630 bob) |
+| 32 | Fri Nov 6 | NEAR | `8St3gGJjDHg46RVYozqWtYCey1TaAG3x88mUzGK8V8jL` | aa5hr.testnet (9k4y..., Meteor) | `testnet.create_account` `policy-signer-agent-v2.testnet` with one full-access key `ed25519:GjwuvEX5UpXiYR3EGxLcz6rjWRwodrGG7NoL6DpH2ANJ`, 0.5 NEAR from the owner ([`wallet-page-new-agent/`](wallet-page-new-agent/)); see note 6 | signed in Meteor; the account then existed with that one key |
+| 33 | Fri Nov 6 | NEAR | `HBcgg4GWqChRmUT1k7RnCrDatfXpznA3TPb5bGiGzMjg` | policy-signer-agent-v2.testnet (GjwuvEX5..., CLI) | AddKey function-call key `ed25519:EmSEqqXoAJEqLxV4yoXUao4uBJAYXhNYKvdmCvXQXYj4` (receiver policy-v1, method `request`, allowance 0.25 NEAR) ([`agent/scripts/new-agent.mjs`](agent/scripts/new-agent.mjs)) | sent by new-agent.mjs; both keys then listed |
+| 34 | Fri Nov 6 | NEAR | `7oR823i3EezbMR6VG3T9MVpNWHVpR35LvtJtqaoJFUmK` | policy-signer-agent-v2.testnet (GjwuvEX5..., CLI) | DeleteKey the full-access key `GjwuvEX5...`: only the function-call key `EmSEqqXo...` remains | the key list then showed `EmSEqqXo...` only |
+| 35 | Fri Nov 6, 12:12:19 PM | NEAR | `3xPZQ1ceuEt766321iV1pzBFJVLDoWnkqzmxY3XVMVjJ` | aa5hr.testnet (9k4y..., Meteor) | `add_agent` `policy-signer-agent-v2.testnet` (enabled, label "demo agent v2", 20 requests a day): scheduled by the 1-hour policy delay, not applied (`change_scheduled`, change 2, `executable_at` Fri Nov 6, 1:12:19 PM MST) ([`wallet-page-new-agent/`](wallet-page-new-agent/)) | signed in Meteor; the page then read change 2, executable 1:12:19 PM |
+| 36 | Fri Nov 6 | NEAR | `7cQxnFdKjjaRA5q3jj6woc1grhpcGvw7TGkKCbnrJCRE` | aa5hr.testnet (9k4y..., Meteor) | `execute_change` 2: `policy-signer-agent-v2.testnet` registered as an agent ([`wallet-page-new-agent/`](wallet-page-new-agent/)) | signed in Meteor |
 
 Explorer links: NEAR `https://testnet.nearblocks.io/txns/<hash>`, 46630 `https://explorer.testnet.chain.robinhood.com/tx/<hash>`.
 
@@ -100,6 +106,12 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
    No second signature was requested.
 4. Owner calls used 30 Tgas each (the console uses 100 Tgas); all succeeded.
 5. #22 was broadcast by the agent CLI itself (`send ... --ticket 1 --broadcast`), with `allowBroadcast` set to true for the run as USER-COMMANDS.md describes and set back to false afterwards, which is how the committed config reads.
+6. A new agent (rows 32 to 36). The Nov 2 agent's key stayed in the environment the deployment was run from, which is no
+   longer available, and agent-v1 has no full-access key to add another (by design, row 9). So a new agent was made where the
+   demo now runs: the owner funded its account with 0.5 NEAR through NEAR's `testnet` registrar (no testnet NEAR faucet was
+   available), `agent/scripts/new-agent.mjs` gave it its only key, a function-call key for `request`, and deleted the
+   full-access key, and the owner registered it with `add_agent`, which the 1-hour policy delay held for an hour before
+   `execute_change` applied it. agent-v1 stays registered.
 
 ## Open items
 
