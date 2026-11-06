@@ -105,7 +105,7 @@ paused false, sign_gas_tgas 50, approved_ticket_ttl_s 900, pending_ticket_ttl_s 
 
 1. The owner account `aa5hr.testnet` has a second full-access key, `ed25519:CY9aCwrmVaPMzMJLbxAxFGwGhEKgSgar5UKuVqLGZcaQ`,
    added at 3:34:29 PM by `HyYhJEpTQuPpY3LQrhWpmeR3jxu4bjQWXuoFWsjwgy3A`. No transaction in this deployment was signed with it
-   (all owner transactions used `ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf`). It is scheduled for removal.
+   (all owner transactions used `ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf`). It is scheduled for removal with [`wallet-page-delete-key/`](wallet-page-delete-key/).
 2. `allowBroadcast` is `false` for 46630 in the testnet config; enable it only for a planned demo.
 3. `exact_transfer` on chain 46630 was set on Nov 2 to `0x2cbaedbf8bf46600cf311c7065f901aad973fd8e`, which is not ShareExact's
    `ExactTransfer`; no `ExactTransfer` is deployed on Robinhood Chain testnet. It had no effect on this deployment, which registers

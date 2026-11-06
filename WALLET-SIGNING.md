@@ -15,6 +15,7 @@ Deployed ids and hashes: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 | Chain policy fix | aa5hr.testnet | Meteor, [`wallet-page-chain-fix/`](wallet-page-chain-fix/) | `set_chain` 46630 with `exact_transfer` cleared |
 | Upgrade to the current code, then the policy delay | aa5hr.testnet | Meteor, [`wallet-page-upgrade/`](wallet-page-upgrade/) | `propose_upgrade`, `apply_upgrade` after 48 hours, `set_params` with `policy_delay_s` 3600 |
 | Owner calls after the upgrade | aa5hr.testnet | Meteor, [`wallet-page-owner/`](wallet-page-owner/) | `approve_ticket` (newest pending), `set_paused`, a scheduled `set_recipient` and its `cancel_change` |
+| Remove the owner account's second key | aa5hr.testnet | Meteor, [`wallet-page-delete-key/`](wallet-page-delete-key/) | DeleteKey `ed25519:CY9a...` (the Meteor key 9k4y... stays) |
 | Agent requests | agent-v1 (function-call key, method `request` only) | agent CLI | `request` |
 
 Why the accounts are not sub-accounts of the owner: creating `*.aa5hr.testnet` needs aa5hr.testnet to sign a CreateAccount
@@ -31,7 +32,7 @@ Shared locks, enforced before any request reaches the wallet:
 
 - the connected account must be `aa5hr.testnet` and the wallet network `testnet`;
 - every transaction goes to `policy-v1.shareexact-chainsig-demo.testnet` and is FunctionCall only, 1 yoctoNEAR, 30 Tgas (`apply_upgrade`: 300 Tgas)
-  (owner methods call `assert_one_yocto`); no CreateAccount, Transfer, AddKey, DeleteKey or DeployContract can be built;
+  (owner methods call `assert_one_yocto`); no CreateAccount, Transfer, AddKey, DeleteKey or DeployContract can be built (one exception: `wallet-page-delete-key/` sends a single DeleteKey of `ed25519:CY9a...` from aa5hr.testnet to itself, locked on aa5hr.testnet's key list instead of policy-v1's state);
 - a live read-only RPC check: policy-v1's code_hash is the expected one (`8EtC2o7j51xd7ESB6vJJLCA18CPytCcmZ6HETqcSPows` for the Nov 2 code; the upgrade page's step 3 requires `E1xgsbWL3TwTefBKFAUdLoKiuYME2zEw938T8ycsnbPF`) and its access-key
   list is empty (the owner page also checks `get_config.owner`);
 - the wallet connects without a contract (no dApp function-call key is requested), Meteor's random local key pair is not
@@ -43,6 +44,7 @@ Shared locks, enforced before any request reaches the wallet:
 | `wallet-page-owner-demo/` | `567ef6dcde2dee624eac46d546c08b6ff3a202e96be6d917ff905fda99958b47` | Approve ticket 1, Pause, Resume (one transaction each, each with its own on-chain lock) |
 | `wallet-page-upgrade/` | `035e5d7595df3e0dde7b748ae815c7a36e6fcc9dbc6b8154a71f78a524247d40` | Propose, apply (with the reproducible wasm served next to it, checked in the browser), turn on the policy delay; each with its own on-chain lock |
 | `wallet-page-owner/` | `5c3ebee2e7344f2d6a467432762e310a370f7bb2e2c7f75ba59971e33f76f5f4` | Approve the newest pending ticket, pause, resume, schedule and cancel a sample change (each with its own on-chain lock; the upgraded code hash is required) |
+| `wallet-page-delete-key/` | `502ca2e069350c6473d77947ab62b337cefc458925da3e04c789c0931b6ab1e7` | Delete the owner account's second full-access key CY9a... (one transaction, unlocked only while CY9a... is there and 9k4y... is a full-access key) |
 | `wallet-page-chain-fix/` | `54cc590ad478c67ef0341c54c4dfc632f4a99be3618c79d5b7bd5fde13c1c6b9` | Clear `exact_transfer` (one transaction, unlocked only while it is still set and the rest of the chain policy is unchanged) |
 
 Rebuilding from `src/` gives the same sha256. Each folder's README lists the exact arguments.
@@ -54,4 +56,4 @@ transactions the Meteor SDK hands to the extension and then rejects them, so not
 transaction is decoded with an independent library (near-api-js 0.45.1) and compared field by field, and byte for byte after
 normalising the live nonce and block hash, with the unsigned transactions in `test/fixtures/`. The tests also cover the locks
 (wrong code hash, leftover key, missing account, wrong owner, ticket not pending), a wrong connected account, and forced
-clicks on disabled buttons. Every RPC call in the five tests is answered offline (the contract's views, aa5hr.testnet's key and the latest block), so they need no network, and CI runs all five, each after checking that a rebuild gives the committed page byte for byte.
+clicks on disabled buttons. Every RPC call in the six tests is answered offline (the contract's views, aa5hr.testnet's key and the latest block), so they need no network, and CI runs all six, each after checking that a rebuild gives the committed page byte for byte.

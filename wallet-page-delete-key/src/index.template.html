@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>near-policy-signer: delete the owner's second key (Meteor)</title>
+<style>
+ body{font:15px/1.45 system-ui,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;color:#111}
+ h1{font-size:20px} h2{font-size:17px;margin-top:28px}
+ pre{background:#f4f4f4;padding:10px;white-space:pre-wrap;word-break:break-all;font-size:13px}
+ button{font-size:15px;padding:8px 14px;margin:4px 6px 4px 0} button:disabled{opacity:.45}
+ .ok{color:#0a7a2f;font-weight:600} .bad{color:#b00020;font-weight:600} .note{color:#555;font-size:13px}
+ #log{background:#111;color:#ddd;min-height:80px}
+</style>
+</head>
+<body>
+<h1>near-policy-signer: delete the owner account's second full-access key (NEAR testnet only)</h1>
+<p class="note">Signs only as <b>aa5hr.testnet</b> through Meteor Wallet. This page holds no keys; Meteor shows the transaction and you approve or reject it there. The button sends ONE transaction from aa5hr.testnet to itself with ONE action: DeleteKey <code>ed25519:CY9aCwrmVaPMzMJLbxAxFGwGhEKgSgar5UKuVqLGZcaQ</code>. The key Meteor signs with, <code>ed25519:9k4yvZ8M7yezqHa6yzDoKr1m9nfv8HER5Bux9NUEmgYf</code>, stays. No transfers, no new keys, no contract calls.</p>
+<p>Connected: <span id="account" class="bad">not connected</span></p>
+<button id="connect">Connect Meteor</button><button id="disconnect">Disconnect</button><button id="refresh">Refresh on-chain state</button>
+<p id="gate" class="note">Checking aa5hr.testnet...</p>
+
+<h2>Delete the second key</h2>
+<pre id="del-desc"></pre>
+<button id="del" disabled>Delete key CY9a... (DeleteKey)</button>
+<ul id="del-out"></ul>
+
+<h2>Log</h2>
+<pre id="log"></pre>
+<script>/*__BUNDLE__*/</script>
+</body>
+</html>
