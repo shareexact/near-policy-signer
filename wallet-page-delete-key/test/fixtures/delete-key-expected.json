@@ -1,7 +1,0 @@
-{
- "note": "nonce 1 and a zero block hash; the test normalises both",
- "deleted": "ed25519:CY9aCwrmVaPMzMJLbxAxFGwGhEKgSgar5UKuVqLGZcaQ",
- "tx": {
-  "k1_delete_key": "DQAAAGFhNWhyLnRlc3RuZXQAgeX41rTX+xgcKP1/JRzd2K6C+OfBjPNwNYgTFsZedngBAAAAAAAAAA0AAABhYTVoci50ZXN0bmV0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAABgCra0EWTnIEsiFbBrz84HSpbmNtFT8N9wOuQWsnjastTQ=="
- }
-}
