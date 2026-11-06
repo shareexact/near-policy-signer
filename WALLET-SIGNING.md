@@ -42,7 +42,7 @@ Shared locks, enforced before any request reaches the wallet:
 | `wallet-page/` | `7022bb58e93625fac398a9d5e283b5666ba5c8e230f19dbc610f79c8c0594c02` | U3 x4 in one batch, or U3.1 to U3.4 one at a time |
 | `wallet-page-owner-demo/` | `567ef6dcde2dee624eac46d546c08b6ff3a202e96be6d917ff905fda99958b47` | Approve ticket 1, Pause, Resume (one transaction each, each with its own on-chain lock) |
 | `wallet-page-upgrade/` | `035e5d7595df3e0dde7b748ae815c7a36e6fcc9dbc6b8154a71f78a524247d40` | Propose, apply (with the reproducible wasm served next to it, checked in the browser), turn on the policy delay; each with its own on-chain lock |
-| `wallet-page-owner/` | `ab023bf84f1c5612b44ce4cc3ff7bc0dfd1085b095ae97a4868ef50af6dfe405` | Approve the newest pending ticket, pause, resume, schedule and cancel a sample change (each with its own on-chain lock; the upgraded code hash is required) |
+| `wallet-page-owner/` | `5c3ebee2e7344f2d6a467432762e310a370f7bb2e2c7f75ba59971e33f76f5f4` | Approve the newest pending ticket, pause, resume, schedule and cancel a sample change (each with its own on-chain lock; the upgraded code hash is required) |
 | `wallet-page-chain-fix/` | `54cc590ad478c67ef0341c54c4dfc632f4a99be3618c79d5b7bd5fde13c1c6b9` | Clear `exact_transfer` (one transaction, unlocked only while it is still set and the rest of the chain policy is unchanged) |
 
 Rebuilding from `src/` gives the same sha256. Each folder's README lists the exact arguments.

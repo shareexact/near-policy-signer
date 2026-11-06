@@ -29,7 +29,7 @@ const DEFAULT = {
 const bobChange = { id: 7, change: { AllowRecipient: { chain_id: 46630, recipient: BOB } }, executable_at: now() + 3500 };
 
 async function makePage({ loginAccount, mock: m0 }) {
-  const mock = { ...DEFAULT, ...m0 };
+  const mock = { ...DEFAULT, hosts: [], ...m0 };
   const sent = [];
   const dom = new JSDOM(html, {
     url: "http://localhost:8080/", runScripts: "dangerously", pretendToBeVisual: true,
@@ -40,6 +40,11 @@ async function makePage({ loginAccount, mock: m0 }) {
         const body = JSON.parse(opts.body);
         const reply = (o) => new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, ...o }), { headers: { "content-type": "application/json" } });
         const p = body.params ?? {};
+        const host = new URL(url).host;
+        if (p.account_id === POLICY) mock.hosts.push(host);
+        if (p.account_id === POLICY && (mock.down ?? []).includes(host)) return new Response("rate limited", { status: 429 });
+        if (p.account_id === POLICY && (mock.jsonError ?? []).includes(host)) return reply({ error: { name: "HANDLER_ERROR", cause: { name: "TOO_MANY_REQUESTS" } } });
+        if (p.account_id === POLICY && p.method_name && p.method_name === mock.viewError) return reply({ result: { error: "wasm execution failed", logs: [], block_height: 1, block_hash: BLOCK_HASH } });
         if (body.method === "block") return reply({ result: { header: { hash: BLOCK_HASH, height: 1 } } });
         if (body.method === "query" && p.account_id === "aa5hr.testnet" && p.request_type === "view_access_key")
           return reply({ result: { nonce: 275000000000000, permission: "FullAccess", block_height: 1, block_hash: BLOCK_HASH } });
@@ -79,7 +84,7 @@ async function makePage({ loginAccount, mock: m0 }) {
   });
   const w = dom.window, d = w.document;
   await until(() => d.getElementById("gate").textContent !== "Checking policy-v1...");
-  return { w, d, sent };
+  return { w, d, sent, mock };
 }
 const ids = ["approve", "pause", "resume", "schedule", "cancel"];
 const log = (d) => d.getElementById("log").textContent;
@@ -181,6 +186,33 @@ for (const [mode, mock] of Object.entries({ delayOff: { delay: 0 }, bobAlready: 
   d.getElementById("pause").disabled = false; d.getElementById("pause").click();
   await until(() => /DEV__METEOR_WALLET_BASE_URL is set/.test(log(d)), 30000);
   check(/DEV__METEOR_WALLET_BASE_URL is set/.test(log(d)) && !sent.some((x) => x.actionType === "sign"), "D: wallet-redirect override refused");
+}
+// Phase E: RPC trouble. A rate-limited first endpoint falls through to the second; an error is never read as an empty answer.
+const FAST = "test.rpc.fastnear.com", NEARORG = "rpc.testnet.near.org";
+{
+  const { d, mock } = await makePage({ loginAccount: "aa5hr.testnet", mock: {} });
+  check(mock.hosts.length > 0 && mock.hosts.every((h) => h === FAST), `E: reads go to ${FAST} first (${[...new Set(mock.hosts)]})`);
+}
+{
+  const { d, mock } = await makePage({ loginAccount: "aa5hr.testnet", mock: { down: [FAST] } });
+  await connectAs(d, "aa5hr.testnet");
+  await until(() => state(d) === "approve=on pause=on resume=off schedule=on cancel=off", 20000);
+  check(state(d) === "approve=on pause=on resume=off schedule=on cancel=off" && mock.hosts.includes(NEARORG), `E(${FAST} answers 429): read from ${NEARORG}, ${state(d)}`);
+}
+for (const [mode, m] of Object.entries({
+  bothDown: { down: [FAST, NEARORG] },
+  httpThenJsonError: { down: [FAST], jsonError: [NEARORG] },
+  scheduledViewFails: { scheduled: [bobChange], viewError: "list_scheduled_changes" },
+})) {
+  const { d, sent } = await makePage({ loginAccount: "aa5hr.testnet", mock: m });
+  await connectAs(d, "aa5hr.testnet");
+  const gate = d.getElementById("gate").textContent, dg = d.getElementById("delay-gate").textContent;
+  check(state(d) === "approve=off pause=off resume=off schedule=off cancel=off", `E(${mode}): all locked, ${state(d)}`);
+  check(/^Could not read the chain/.test(gate) && /^Unknown/.test(dg) && /ERROR reading the chain/.test(log(d)), `E(${mode}): says so | ${gate.slice(0, 110)}`);
+  check(!/nothing scheduled/.test(dg), `E(${mode}): an RPC error is not shown as "nothing scheduled"`);
+  d.getElementById("schedule").disabled = false; d.getElementById("schedule").click();
+  await until(() => (log(d).match(/ERROR/g) || []).length >= 3, 30000);
+  check(!sent.some((x) => x.actionType === "sign"), `E(${mode}): forced schedule: no sign request`);
 }
 console.log(failures ? `\n${failures} FAILED` : "\nALL CHECKS OK");
 process.exit(failures ? 1 : 0);

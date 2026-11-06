@@ -35,14 +35,25 @@ function assertOwnerCallOnly(tx) {
 }
 export const toSelectorTx = (tx) => (assertOwnerCallOnly(tx), { signerId: P.SIGNER, receiverId: tx.receiverId, actions: toNajActions(tx.actions) });
 
+// An RPC error is never read as an empty answer: it throws, and the caller keeps every button locked.
+// The one expected error, UNKNOWN_ACCOUNT, is returned so view_account can report a missing account.
 async function rpc(method, params) {
-  const r = await fetch(P.RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-  return r.json();
+  let last = null;
+  for (const url of P.RPCS) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      if (j.error && j.error.cause?.name !== "UNKNOWN_ACCOUNT") throw new Error(JSON.stringify(j.error).slice(0, 200));
+      return j;
+    } catch (e) { last = new Error(`${new URL(url).host}: ${e?.message ?? e}`); }
+  }
+  throw last;
 }
 const q = async (params) => (await rpc("query", { finality: "final", ...params })).result ?? null;
 async function view(method, args) {
   const r = await q({ request_type: "call_function", account_id: P.POLICY, method_name: method, args_base64: btoa(JSON.stringify(args)) });
-  if (!r?.result) return undefined;
+  if (!Array.isArray(r?.result)) throw new Error(`view ${method}: ${JSON.stringify(r?.error ?? r).slice(0, 200)}`);
   return JSON.parse(Buffer.from(r.result).toString("utf8"));
 }
 
@@ -149,7 +160,11 @@ async function signOne(makeTx, outId, button) {
   const w = await (await getSelector()).wallet("meteor-wallet");
   const out = await w.signAndSendTransaction(toSelectorTx(tx));
   showHashes(outId, out);
-  refreshState();
+  // Views read final state, a few blocks behind the transaction: wait before re-reading, so the page never shows the old state.
+  log("re-reading the chain in 5 s");
+  for (const id of BUTTONS) $(id).disabled = true;
+  await new Promise((r) => setTimeout(r, P.REREAD_DELAY_MS));
+  await refreshState();
 }
 
 const BUTTONS = ["approve", "pause", "resume", "schedule", "cancel"];
@@ -157,7 +172,14 @@ let refreshSeq = 0;
 async function refreshState() {
   const seq = ++refreshSeq;
   for (const id of BUTTONS) $(id).disabled = true; // locked while re-reading the chain
-  const st = await readState();
+  let st;
+  try { st = await readState(); } catch (e) {
+    if (seq !== refreshSeq) return;
+    $("gate").textContent = `Could not read the chain (${e?.message ?? e}). Every button stays locked; press Refresh on-chain state.`;
+    for (const g of ["approve-gate", "pause-gate", "delay-gate"]) $(g).textContent = "Unknown: the chain could not be read. Locked.";
+    log(`ERROR reading the chain: ${e?.message ?? e}`);
+    return;
+  }
   if (seq !== refreshSeq) return; // a newer refresh owns the buttons
   const signerOk = connected === P.SIGNER; // read after the await, so a connect during the read counts
   for (const id of BUTTONS) $(id).disabled = !signerOk || !st[id];
