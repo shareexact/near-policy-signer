@@ -8,7 +8,7 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 
 **Status:** live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet. ERC-20 and Stock Token transfers are implemented and unit-tested. Testnet only, not audited. Built at the NEAR HACKATHON (November 2026), tracks AI Security & Defense (`security`) and Agent Economy (`agents`).
 
-**Demo video (80 s, no sound needed):** [docs/demo.mp4](docs/demo.mp4), recorded on NEAR testnet and Robinhood Chain testnet on Nov 11 (take 3); every transaction in it is in [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md), rows 47 to 55.
+**Demo video (80 s, no sound needed):** [docs/demo.mp4](docs/demo.mp4), recorded on NEAR testnet and Robinhood Chain testnet on Nov 11 (take 3); every transaction in it is in [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md), rows 47 to 55. The same video in the hackathon demo post on X: [x.com/BETAxNFT/status/2120795628061999416](https://x.com/BETAxNFT/status/2120795628061999416).
 
 ## For NEAR HACKATHON judges
 
