@@ -8,9 +8,18 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 
 **Status:** live on NEAR testnet, signing native ETH transfers on Robinhood Chain testnet. ERC-20 and Stock Token transfers are implemented and unit-tested. Testnet only, not audited. Built at the NEAR HACKATHON (November 2026), tracks AI Security & Defense (`security`) and Agent Economy (`agents`).
 
+**Demo video (80 s, no sound needed):** [docs/demo.mp4](docs/demo.mp4), recorded on NEAR testnet and Robinhood Chain testnet on Nov 11 (take 3); every transaction in it is in [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md), rows 47 to 55.
+
 ## For NEAR HACKATHON judges
 
 **In one line:** the agent gets a budget, not a wallet key. A NEAR contract owns the agent's EVM address through Chain Signatures, builds every transfer itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign. The contract account has no access keys, and the agent's only key can call one method, `request`.
+
+**In 60 seconds:**
+1. The contract account has no keys: [policy-v1, Access Keys](https://testnet.nearblocks.io/address/policy-v1.shareexact-chainsig-demo.testnet) (its only key was deleted on Nov 2).
+2. The agent has one key, for one method: [policy-signer-agent-v2, Access Keys](https://testnet.nearblocks.io/address/policy-signer-agent-v2.testnet) (`FUNCTION_CALL`, `request`).
+3. A hijacked request refused on chain: [367jh6Zr...](https://testnet.nearblocks.io/txns/367jh6ZrKMt49EvSn2VT51KH7M1TMyZLwquMRfzFMwA1), Execution Plan: `REFUSED`, `AmountCapExceeded`, event `refused`.
+4. A transfer the owner approved, signed by the NEAR MPC network for the contract: [95mWK1bj...](https://testnet.nearblocks.io/txns/95mWK1bjpAupjbUCa7DtGDk2eSKoHHPbf3LfJyHw1Tte), then [0x3a0c363c...](https://explorer.testnet.chain.robinhood.com/tx/0x3a0c363cc91fa6df16a176e97d3a64ec5315f22290e8bebf9323f0d35118d59c) on Robinhood Chain testnet.
+5. Ask the live contract yourself, read-only: [Check it yourself](#check-it-yourself-no-keys-and-no-funds).
 
 ### Proof on chain (NEAR testnet and Robinhood Chain testnet, Nov 2 to Nov 11 2026)
 
@@ -68,7 +77,7 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
 | Status | What |
 |---|---|
 | Live on testnet, with transactions | Refusals on chain, with their reasons: over the cap, a look-alike recipient, while paused; a second agent registered through the policy delay; the upgrade through the contract's own 48-hour timelock; the 1-hour policy delay, shown with a change scheduled and cancelled; native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
-| Live, read-only | `preview` returns the decision `request` would make, with no transaction and no keys (the commands under [Check it yourself](#check-it-yourself)). On Nov 2 the agent's refusals came from this preview; on Nov 6 and Nov 11 `send --skip-preview` sent requests straight to `request`, as a compromised agent would, and the contract refused them on chain with a `refused` event (proof table) |
+| Live, read-only | `preview` returns the decision `request` would make, with no transaction and no keys (the commands under [Check it yourself](#check-it-yourself-no-keys-and-no-funds)). On Nov 2 the agent's refusals came from this preview; on Nov 6 and Nov 11 `send --skip-preview` sent requests straight to `request`, as a compromised agent would, and the contract refused them on chain with a `refused` event (proof table) |
 | Implemented, unit-tested only | ERC-20 (`Plain`) and Stock Token (`StockExact`, `StockDirect`) kinds; the delay applied to `propose_owner` (it is on chain, but no ownership transfer has been scheduled); nonce burns and fee bumps; the NEAR AI Cloud planner (tested against a mock; the testnet demo used the rule-based planner) |
 | Planned | Sandbox integration tests with `mock-signer`, alerts and agent packages: [ROADMAP.md](ROADMAP.md) |
 
