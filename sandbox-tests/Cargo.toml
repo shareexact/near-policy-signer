@@ -1,0 +1,14 @@
+[package]
+name = "sandbox-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The full request, MPC sign and callback path in a NEAR sandbox, with mock-signer standing in for the MPC network."
+
+# Not a workspace member: near-workspaces is heavy and needs the sandbox binary.
+# Run with ./sandbox-tests/run.sh after building both wasm files (see the CI job).
+[dependencies]
+near-workspaces = "0.24"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde_json = "1"
+anyhow = "1"

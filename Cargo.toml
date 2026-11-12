@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["policy-signer", "mock-signer"]
-exclude = ["upgrade-check", ".old"]
+exclude = ["upgrade-check", "sandbox-tests", ".old"]
 
 [profile.release]
 codegen-units = 1
