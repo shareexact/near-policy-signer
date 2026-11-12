@@ -14,11 +14,12 @@ Where the policy signer goes after the hackathon. Each step keeps the two rules 
 
 - **Live testnet deployment.** The contract runs on NEAR testnet and signs native transfers on Robinhood Chain testnet through the MPC network: signed, refused, queued and approved, and paused requests, all with hashes in [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 
+- **Sandbox integration tests.** The full request, sign and callback path runs in a near-workspaces sandbox with `mock-signer`, in CI on every commit ([`sandbox-tests/`](sandbox-tests/)).
+
 ## Next: from hackathon entry to daily tool
 
 | Step | What | Why it matters to a user |
 |---|---|---|
-| Sandbox integration tests | The full request, sign and callback path with the mock signer in near-workspaces, in CI | The NEAR integration is proven on every commit |
 | Alerts | Notify the owner (email or Telegram) on every `escalated`, `change_scheduled`, `upgrade_proposed` and refusal spike, and before a Stock Token's unit change | The owner hears about anything that needs them, without watching a dashboard |
 
 ## Then: breadth
