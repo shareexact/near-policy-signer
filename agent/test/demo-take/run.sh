@@ -16,7 +16,8 @@ enters() { yes "" | head -60; }
 zero() { if [ "$2" = 0 ]; then echo "PASS $1"; else echo "FAIL $1: $2"; fails=$((fails + 1)); fi; }
 
 out=$($S check </dev/null 2>&1 | strip); expect "check passes read-only" "$out" "Preflight OK."
-out=$(NEAR_AGENT_KEY="ed25519:3D4YudUahN1nawWogh8pAKSj92sUNMdbZGjn7kERKzjoTy35oKFRb2t8kB5SLXcUYxFx4MuuGHyH5ZXPwBdA3oKX" $S take </dev/null 2>&1 | strip)
+OTHER=$(node -e 'const {KeyPair}=require("near-api-js"); console.log(KeyPair.fromRandom("ed25519").toString())') # made here, never committed
+out=$(NEAR_AGENT_KEY="$OTHER" $S take </dev/null 2>&1 | strip)
 expect "a key that is not the agent's is refused" "$out" "is not the agent's request key"
 export NEAR_AGENT_KEY="${KEY%% *}"
 rm -f "$T/cfgcount"; out=$(enters | $S take 2>&1 | strip)

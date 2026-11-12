@@ -85,7 +85,9 @@ All times are MST (UTC-7) on Mon Nov 2 2026 unless a row says otherwise. Every h
 
 Explorer links: NEAR `https://testnet.nearblocks.io/txns/<hash>`, 46630 `https://explorer.testnet.chain.robinhood.com/tx/<hash>`.
 
-## Final state (read Nov 2, about 5:16 PM MST)
+## State at the end of Nov 2 (read Nov 2, about 5:16 PM MST)
+
+Kept as read that day. Since then (rows 26 to 55): the contract runs the reproducible build `E1xgsbWL...` with `policy_delay_s` 3600, `policy-signer-agent-v2.testnet` is a second registered agent, and the derived address's nonce on 46630 is 6, equal to the contract's `next_nonce`.
 
 | Account | Balance (yoctoNEAR) | Code hash | Access keys |
 |---|---|---|---|

@@ -12,7 +12,7 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 
 **In one line:** the agent gets a budget, not a wallet key. A NEAR contract owns the agent's EVM address through Chain Signatures, builds every transfer itself, checks it against the owner's policy, and only then asks the NEAR MPC network to sign. The contract account has no access keys, and the agent's only key can call one method, `request`.
 
-### Proof on chain (NEAR testnet and Robinhood Chain testnet, Nov 2 2026)
+### Proof on chain (NEAR testnet and Robinhood Chain testnet, Nov 2 to Nov 11 2026)
 
 | What happened | NEAR testnet | Robinhood Chain testnet (46630) |
 |---|---|---|
@@ -22,7 +22,7 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 | The agent asks for 0.0008 ETH: queued for the owner (ticket 1) | [BE3AfBTF...](https://testnet.nearblocks.io/txns/BE3AfBTFjSB3XkwGJntEkKwfe4Z39HzSNBLWfDKx9rg1) | |
 | The owner approves ticket 1 in a NEAR wallet (Meteor) | [G4vGHLGN...](https://testnet.nearblocks.io/txns/G4vGHLGNerxLVdM2v3JBsF4DuMjbDygJxYYoxBkyrR2J) | |
 | The agent re-sends with the ticket: signed, confirmed | [9tbbDUhi...](https://testnet.nearblocks.io/txns/9tbbDUhiPLiUt4k14MbcfB2jRnhYMN9fVjksfnf6APb1) | [0xc9ece954...](https://explorer.testnet.chain.robinhood.com/tx/0xc9ece954844ce74921104ee2ba88e7664a1ba57bd1b7edf582074ab194ddce1a) |
-| The owner pauses (the agent's next send is refused as `Paused` by its read-only preview, no transaction), then resumes | [7Gvoi8de...](https://testnet.nearblocks.io/txns/7Gvoi8dei739fGF5XaR7aMYr3UZ2NeRiSkucpPp6Pttp), [GAJySQeS...](https://testnet.nearblocks.io/txns/GAJySQeS5z5ZcruUHMoFMv1jzELcfp1FWXsTo6SFeTx4) | |
+| The owner pauses (on Nov 2 the agent's next send was refused as `Paused` by its read-only preview, with no transaction; the same refusal on chain is in the Nov 11 rows below), then resumes | [7Gvoi8de...](https://testnet.nearblocks.io/txns/7Gvoi8dei739fGF5XaR7aMYr3UZ2NeRiSkucpPp6Pttp), [GAJySQeS...](https://testnet.nearblocks.io/txns/GAJySQeS5z5ZcruUHMoFMv1jzELcfp1FWXsTo6SFeTx4) | |
 | Nov 4: the owner proposes the upgrade to the reproducible build of a3ac91e; it can be applied no earlier than 48 hours later | [3H6Yd7db...](https://testnet.nearblocks.io/txns/3H6Yd7dbfdTz3iPz9qUjioz4ApqxRfuuWdKasKcy23Gm) | |
 | Nov 6: the upgrade is applied after the 48-hour timelock; the contract now runs the reproducible build | [DJDfYoJp...](https://testnet.nearblocks.io/txns/DJDfYoJpDaEs7unEUHLsXPkk2u7st7HkCDsbLwXmjjPW) | |
 | The owner turns on the 1-hour policy delay | [8KzSo5hF...](https://testnet.nearblocks.io/txns/8KzSo5hFA9vBbsfwK6NoZ2AeJ7mnXW4dGQueoUzQeEcC) | |
@@ -32,6 +32,8 @@ An agent that holds a private key will eventually send the wrong amount, to the 
 | Nov 11, the recorded demo (take 3): a look-alike recipient refused on chain (`LookalikeRecipient`) | [66YJpt5F...](https://testnet.nearblocks.io/txns/66YJpt5FECnJbyaF5TNf3yX7VKf3w3A84v4zXRGxr28M) | |
 | The same take: a transfer above the approval threshold queued, approved by the owner in Meteor, then signed and broadcast | [8SZocPbJ...](https://testnet.nearblocks.io/txns/8SZocPbJ2Zp7Kqc1ZHHSv4umttBC21bLTtWEzG8CcNw9), [G8zZ5fuK...](https://testnet.nearblocks.io/txns/G8zZ5fuKzL33TnUAoNJgXQp6GuahPRuqLSayjd7ZoSjF), [95mWK1bj...](https://testnet.nearblocks.io/txns/95mWK1bjpAupjbUCa7DtGDk2eSKoHHPbf3LfJyHw1Tte), [`0x3a0c363c...`](https://explorer.testnet.chain.robinhood.com/tx/0x3a0c363cc91fa6df16a176e97d3a64ec5315f22290e8bebf9323f0d35118d59c) | |
 | The same take: the owner pauses, a request is refused on chain (`Paused`), the owner resumes | [E3Gdm9Vw...](https://testnet.nearblocks.io/txns/E3Gdm9VwgRUmAvuAG418FBFbrHh4xYPwtigKnpAXQBZk), [AAzQAM2B...](https://testnet.nearblocks.io/txns/AAzQAM2B8RYx3R68szNR3kTxdj3qte6Kt7BHHLjN3A6Y), [6wjjPYYW...](https://testnet.nearblocks.io/txns/6wjjPYYW5RzdPiuQn4eAKzogvxgkNyRV8D8vLLXB3Ujk) | |
+
+Robinhood Chain testnet is a rollup that settles to Ethereum Sepolia: on its explorer, "L1 status" tracks that settlement; the transfer itself is final once "L2 status" reads Success.
 
 Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblocks.io/address/policy-v1.shareexact-chainsig-demo.testnet), owner `aa5hr.testnet`, code: since the Nov 6 upgrade, the reproducible build of commit `a3ac91e` (on-chain code hash `E1xgsbWL...`, the base58 form of the release's sha256 `c166e563...`, see [Verify the code](#verify-the-code)); policy delay 1 hour. Its address on 46630: [0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F](https://explorer.testnet.chain.robinhood.com/address/0xc86A2A2F3FB5a3ac4FcB18076803c76D97AAc43F). Every transaction, in order, with the two refusals that the agent's read-only check caught before any transaction: [DEPLOYMENT-TESTNET.md](DEPLOYMENT-TESTNET.md).
 
@@ -49,7 +51,7 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
    npm run cli -- preview "send 0.0004 ETH to bob"         # decision NEEDS_APPROVAL (a new recipient goes to the owner)
    ```
    `alice-old` shares the first and last four hex digits with `alice`. Answers depend on today's spend and on whether the owner has paused. The public RPC is rate limited; the judges' config uses FastNEAR's public testnet endpoint; if a call fails, run `export NEAR_RPC_URL=https://rpc.testnet.near.org` (or another endpoint from the [NEAR RPC providers list](https://docs.near.org/api/rpc/providers)) and retry.
-3. **Run the tests** (about 5 minutes once dependencies are downloaded): `cargo test` (policy-signer 95, mock-signer 5) and `cd agent && npm ci && npm test` (36).
+3. **Run the tests** (about 5 minutes once dependencies are downloaded; `rust-toolchain.toml` pins Rust 1.97.1, which `rustup` installs on the first `cargo` call, and older toolchains fail): `cargo test` (policy-signer 95, mock-signer 5) and `cd agent && npm ci && npm test` (36).
 
 ### Verify the code
 
@@ -65,8 +67,8 @@ Contract: [policy-v1.shareexact-chainsig-demo.testnet](https://testnet.nearblock
 
 | Status | What |
 |---|---|
-| Live on testnet, with transactions | The upgrade through the contract's own 48-hour timelock; the 1-hour policy delay, shown with a change scheduled and cancelled; native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
-| Live, read-only | The over-cap and paused refusals of Nov 2 came from the contract's `preview` view, which the agent calls first, so they have no transaction. `request` runs the same `evaluate` function and logs a `refused` event; `send --skip-preview` submits it directly, as a compromised agent would |
+| Live on testnet, with transactions | Refusals on chain, with their reasons: over the cap, a look-alike recipient, while paused; a second agent registered through the policy delay; the upgrade through the contract's own 48-hour timelock; the 1-hour policy delay, shown with a change scheduled and cancelled; native ETH transfers on Robinhood Chain testnet signed by the NEAR MPC network; the approval queue with the owner approving in a NEAR wallet; pause and resume; a contract account with no keys; an agent limited to one function-call key |
+| Live, read-only | `preview` returns the decision `request` would make, with no transaction and no keys (the commands under [Check it yourself](#check-it-yourself)). On Nov 2 the agent's refusals came from this preview; on Nov 6 and Nov 11 `send --skip-preview` sent requests straight to `request`, as a compromised agent would, and the contract refused them on chain with a `refused` event (proof table) |
 | Implemented, unit-tested only | ERC-20 (`Plain`) and Stock Token (`StockExact`, `StockDirect`) kinds; the delay applied to `propose_owner` (it is on chain, but no ownership transfer has been scheduled); nonce burns and fee bumps; the NEAR AI Cloud planner (tested against a mock; the testnet demo used the rule-based planner) |
 | Planned | Sandbox integration tests with `mock-signer`, alerts and agent packages: [ROADMAP.md](ROADMAP.md) |
 
@@ -119,7 +121,7 @@ flowchart LR
 - **Address-poisoning detection on chain:** a recipient that is not allowlisted but shares the first and last four hex digits with an allowlisted one is refused as `LookalikeRecipient`, and can never be queued or approved.
 - The owner can pause at once, and can void a signature already issued by burning its nonce, provided the burn is mined first.
 - Each agent has its own request limit and optional per-token daily cap, on top of the global caps.
-- **With `policy_delay_s` set** (it is 0 by default and on the testnet deployment), a stolen owner key cannot loosen policy on the spot: every change that adds a recipient, raises a cap, adds an agent or proposes a new owner is announced and takes effect only after the delay, and the real owner can cancel it. Removals and pause are immediate; so are resume, ticket approvals, burns and token approvals, which a stolen key can use too ([SECURITY.md](SECURITY.md)). This holds while the real owner keeps control of the owner account; a thief with its full-access key can also remove the owner's other keys.
+- **With `policy_delay_s` set** (it is 0 by default; the testnet deployment has used 3600 since Nov 6), a stolen owner key cannot loosen policy on the spot: every change that adds a recipient, raises a cap, adds an agent or proposes a new owner is announced and takes effect only after the delay, and the real owner can cancel it. Removals and pause are immediate; so are resume, ticket approvals, burns and token approvals, which a stolen key can use too ([SECURITY.md](SECURITY.md)). This holds while the real owner keeps control of the owner account; a thief with its full-access key can also remove the owner's other keys.
 - A failed or timed-out signature is treated as possibly issued: its nonce is not reused for a different transfer and its budget is not released.
 - Every refusal of a submitted request, queue entry, signature, policy change and owner action is a NEP-297 event: an audit trail on chain.
 - The code can change only through a timelock (48 hours by default; it can be raised, never lowered) with an on-chain announcement, or never, once `disable_upgrades` is called.
@@ -161,7 +163,7 @@ The contract tests use `near-sdk` unit testing. The CI workflow (`.github/workfl
 | `mock-signer/` | A mock of the MPC `sign` method with the real argument and response shapes, for sandbox integration tests (planned). Its signatures do not recover and must never be broadcast |
 | `agent/` | The agent runtime and `policy-agent` CLI (TypeScript, viem, near-api-js): planner, reads, preview, request, verification, broadcast |
 | `dashboard/` | The owner console (Vite, NEAR Wallet Selector): reads the contract's views; owner actions are signed in the owner's own wallet, testnet only, or shown as near-cli commands. The page holds no key |
-| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/`, `wallet-page-upgrade/`, `wallet-page-owner/`, `wallet-page-new-agent/` | Single-file Meteor Wallet pages for the testnet deployment's owner calls, each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
+| `wallet-page/`, `wallet-page-owner-demo/`, `wallet-page-chain-fix/`, `wallet-page-upgrade/`, `wallet-page-owner/`, `wallet-page-new-agent/` | Single-file Meteor Wallet pages for the testnet deployment's owner calls (start with `wallet-page-owner/`: approve, pause, resume; the others are one-off pages kept, with their sha256, as the record of the transactions they sent), each locked to its exact transactions, with tests ([WALLET-SIGNING.md](WALLET-SIGNING.md)) |
 | `DEPLOYMENT-TESTNET.md`, `USER-COMMANDS.md` | The testnet deployment: every transaction, and the commands used |
 | `SECURITY.md` | Threat model, deployment rules, operating limits |
 | `ROADMAP.md` | What comes after the hackathon |
@@ -231,7 +233,7 @@ The contract is live on NEAR testnet as `policy-v1.shareexact-chainsig-demo.test
 
 To deploy your own instance, these are the steps, in order; deployment rules 1 and 2 in [SECURITY.md](SECURITY.md) are not optional.
 
-1. Build: `cd policy-signer && cargo near build non-reproducible-wasm --locked`.
+1. Build: `cd policy-signer && cargo near build non-reproducible-wasm --locked`. (For the reproducible build, `cargo near build reproducible-wasm` runs this same command inside the pinned image; that is why the NEP-330 `build_command` on chain reads `non-reproducible-wasm`.)
 2. Create three testnet accounts: the contract, an owner, and an agent.
 3. Deploy with the init call in the same transaction (check `cargo near deploy --help` for your version):
    `new({"owner":"<owner>","signer":"v1.signer-prod.testnet","path":"robinhood-46630-1","network":"Testnet"})`
